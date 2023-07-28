@@ -186,6 +186,9 @@ impl<'data> Future for WriteFuture<'data> {
         };
 
         match res {
+            std::task::Poll::Ready(Ok(0)) => {
+                std::task::Poll::Ready(Err(Error::new(ErrorKind::WriteZero, "Failed to write data")))
+            }
             std::task::Poll::Ready(Ok(bytes)) => {
                 self.pos += bytes;
                 if self.pos == self.data.len() {
@@ -238,7 +241,9 @@ impl<'data> Future for ReadFuture<'data> {
         };
 
         match res {
+            std::task::Poll::Ready(Ok(0)) => std::task::Poll::Ready(Err(Error::new(ErrorKind::UnexpectedEof, "Unexpected EOF"))),
             std::task::Poll::Ready(Ok(bytes)) => {
+                println!("Read {} bytes", bytes);
                 self.pos += bytes;
                 self.remaining -= bytes;
                 if self.remaining == 0 {
@@ -285,7 +290,7 @@ impl RunningJob {
         WriteFuture::new(self.stdin.clone(), data).await
     }
 
-    pub async fn read(&mut self, data: &mut [u8]) -> Result<(), Error> {
+    pub async fn read(&mut self, data: &mut [u8]) -> Result<(), std::io::Error> {
         ReadFuture::new(self.stdout.clone(), data).await
     }
 

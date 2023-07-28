@@ -161,9 +161,9 @@ fn make_deserializer(ty: &Type, instance: &str) -> String {
                 BuiltinType::Str => "str",
             };
 
-            format!("{}.read_{}().await.unwrap()", instance, name)
+            format!("{}.read_{}().await?", instance, name)
         },
-        Type::NamedType(name) => format!("deserialize_{}({}).await", name, instance),
+        Type::NamedType(name) => format!("deserialize_{}({}).await?", name, instance),
         Type::Array(ty, count) => {
             let mut res = String::new();
             res.push_str("unsafe {");
@@ -185,7 +185,7 @@ fn make_deserializer(ty: &Type, instance: &str) -> String {
 
             res.push_str("{");
 
-            res.push_str(&format!("let array_size = {}.read_u32().await.unwrap();\n", instance));
+            res.push_str(&format!("let array_size = {}.read_u32().await?;\n", instance));
             res.push_str(&format!("let mut res: Vec<{}> = Vec::with_capacity(array_size as usize);\n", make_type_str(ty)));
 
             res.push_str("for i in 0..array_size {\n");
@@ -402,7 +402,7 @@ fn make_interface(itf: &GameInterface, span: &Span) -> TokenStream {
     }
 
     for (name, ty) in &itf.types {
-        res.extend(format!("async fn deserialize_{}(instance: &mut crate::isolate::sandbox::RunningJob) -> {}", name, name).parse::<TokenStream>().unwrap());
+        res.extend(format!("async fn deserialize_{}(instance: &mut crate::isolate::sandbox::RunningJob) -> Result<{}, async_std::io::Error>", name, name).parse::<TokenStream>().unwrap());
 
         let mut stream = TokenStream::new();
 
@@ -415,10 +415,10 @@ fn make_interface(itf: &GameInterface, span: &Span) -> TokenStream {
                 let variant_type = get_enum_variant_type(&variants);
 
                 let reader = match variant_type {
-                    BuiltinType::U8 => "instance.read_u8().await.unwrap()",
-                    BuiltinType::U16 => "instance.read_u16().await.unwrap()",
-                    BuiltinType::U32 => "instance.read_u32().await.unwrap()",
-                    BuiltinType::U64 => "instance.read_u64().await.unwrap()",
+                    BuiltinType::U8 => "instance.read_u8().await?",
+                    BuiltinType::U16 => "instance.read_u16().await?",
+                    BuiltinType::U32 => "instance.read_u32().await?",
+                    BuiltinType::U64 => "instance.read_u64().await?",
                     _ => panic!("Invalid enum variant type")
                 };
 
@@ -448,7 +448,7 @@ fn make_interface(itf: &GameInterface, span: &Span) -> TokenStream {
                     stream2.extend_one(TokenTree::Punct(Punct::new(',', proc_macro::Spacing::Alone)));
                 }
 
-                stream2.extend("_ => unreachable!()".parse::<TokenStream>().unwrap());
+                stream2.extend("_ => return Err(async_std::io::Error::new(async_std::io::ErrorKind::InvalidData, \"Invalid enum variant\"))".parse::<TokenStream>().unwrap());
 
                 let group = Group::new(proc_macro::Delimiter::Brace, stream2);
 
@@ -457,7 +457,12 @@ fn make_interface(itf: &GameInterface, span: &Span) -> TokenStream {
             x => stream.extend_one(make_deserializer(x, "instance").parse::<TokenStream>().unwrap())
         }
 
-        let group = Group::new(proc_macro::Delimiter::Brace, stream);
+        let mut stream2 = TokenStream::new();
+        stream2.extend_one(TokenTree::Ident(Ident::new("Ok", *span)));
+        let ok_group = Group::new(proc_macro::Delimiter::Parenthesis, stream);
+        stream2.extend_one(TokenTree::Group(ok_group));
+
+        let group = Group::new(proc_macro::Delimiter::Brace, stream2);
 
         res.extend_one(TokenTree::Group(group));
     }
@@ -500,10 +505,14 @@ fn make_interface(itf: &GameInterface, span: &Span) -> TokenStream {
 
         stream.extend_one(TokenTree::Group(Group::new(proc_macro::Delimiter::Parenthesis, args)));
 
+        
+        stream.extend("-> Result<".parse::<TokenStream>().unwrap());
         if let Some(ref ty) = function.ret {
-            stream.extend("->".parse::<TokenStream>().unwrap());
             make_type(&ty, span, &mut stream);
+        } else {
+            stream.extend("()".parse::<TokenStream>().unwrap());
         }
+        stream.extend(", async_std::io::Error>".parse::<TokenStream>().unwrap());
         
         let mut body = TokenStream::new();
 
@@ -516,18 +525,30 @@ fn make_interface(itf: &GameInterface, span: &Span) -> TokenStream {
 
         body.extend("println!(\"Sending: {:?}\", out_bytes);".parse::<TokenStream>().unwrap());
 
-        body.extend("self.instance.write(&out_bytes).await.unwrap();".parse::<TokenStream>().unwrap());
+        body.extend("self.instance.write(&out_bytes).await?;".parse::<TokenStream>().unwrap());
 
         if let Some(ref ty) = function.ret {
-            body.extend(make_deserializer(ty, "(&mut self.instance)").parse::<TokenStream>().unwrap());
+            let mut res = TokenStream::new();
+            res.extend(make_deserializer(ty, "(&mut self.instance)").parse::<TokenStream>().unwrap());
+
+            body.extend_one(TokenTree::Ident(Ident::new("Ok", *span)));
+            body.extend_one(TokenTree::Group(Group::new(proc_macro::Delimiter::Parenthesis, res)));
+        } else {
+            body.extend("Ok(())".parse::<TokenStream>().unwrap());
         }
 
         stream.extend_one(TokenTree::Group(Group::new(proc_macro::Delimiter::Brace, body)));
     }
+    
 
-    stream.extend("pub async fn kill(mut self) { self.instance.kill().await.unwrap(); }".parse::<TokenStream>().unwrap());
+    stream.extend("pub async fn kill(mut self) { match self.instance.kill().await {
+        Ok(_) => (),
+        Err(e) => log::error!(\"Failed to kill sandbox: {:?}\", e)
+    } }".parse::<TokenStream>().unwrap());
 
     res.extend_one(TokenTree::Group(Group::new(proc_macro::Delimiter::Brace, stream)));
+
+    println!("Generated interface: {}", res.to_string());
 
     res
 }

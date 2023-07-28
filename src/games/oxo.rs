@@ -61,7 +61,28 @@ impl Game for TicTacToe {
         while turn < 9 {
             let player = turn % 2;
 
-            let m = agents[player].get_move(&grid).await;
+            let m = match agents[player].get_move(&grid).await {
+                Ok(m) => m,
+                Err(e) => {
+                    if player == 0 {
+                        return vec![PlayerResult {
+                            score: 0.0,
+                            error: Some(format!("Client Error: {:?}", e)),
+                        }, PlayerResult {
+                            score: 1.0,
+                            error: None,
+                        }];
+                    } else {
+                        return vec![PlayerResult {
+                            score: 1.0,
+                            error: None,
+                        }, PlayerResult {
+                            score: 0.0,
+                            error: Some(format!("Client Error: {:?}", e)),
+                        }];
+                    }
+                }
+            };
 
             if m.row > 2 || m.col > 2 || grid[m.row as usize][m.col as usize] != BoardCell::Empty {
                 if player == 0 {
