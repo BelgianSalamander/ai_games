@@ -1,0 +1,16 @@
+type Piece = enum {
+    Nought, Cross
+};
+
+type BoardCell = enum {
+    Empty, Nought, Cross
+};
+
+type Pos = struct {
+    row: u8,
+    col: u8
+};
+
+type Board = [[BoardCell; 3]; 3];
+
+function get_move = (board: Board) -> Pos;

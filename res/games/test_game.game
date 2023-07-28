@@ -1,0 +1,1 @@
+function do_stuff = (x: i32) -> i32;

@@ -1,0 +1,25 @@
+type SnakeID = u32;
+
+type Pos = struct {
+    row: u32,
+    col: u32
+};
+
+type GridCell = enum {
+    Empty,
+    Food,
+    Snake {
+        snake_id: SnakeID
+    }
+};
+
+type Move = enum {
+    Up, Down, Left, Right
+};
+
+type Grid = [[GridCell]];
+
+function init = (snake_id: u32, num_rows: u32, num_cols: u32, num_snakes: u32);
+function get_move = (grid: Grid) -> Move;
+
+function on_cell_update = (pos: Pos, old_value: GridCell, new_value: GridCell);

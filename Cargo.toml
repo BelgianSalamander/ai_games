@@ -1,0 +1,18 @@
+[package]
+name = "ai_games"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = "0.1.72"
+env_logger = "0.10.0"
+gamedef = { path = "gamedef" }
+log = "0.4.19"
+proc-gamedef = { path = "proc-gamedef" }
+rand = "0.8.5"
+
+[dependencies.async-std]
+version = "1.7.0"
+features = ["unstable", "std", "async-process"]
