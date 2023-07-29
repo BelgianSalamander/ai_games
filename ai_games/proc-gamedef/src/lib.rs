@@ -274,6 +274,7 @@ fn get_derives(ty: &Type, itf: &GameInterface) -> Option<String> {
     derives.push("Debug".to_string());
     derives.push("Clone".to_string());
     derives.push("PartialEq".to_string());
+    derives.push("serde::Serialize".to_string());
 
     if is_copyable(ty, itf) {
         derives.push("Copy".to_string());

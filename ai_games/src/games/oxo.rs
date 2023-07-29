@@ -1,10 +1,11 @@
 use async_trait::async_trait;
 use proc_gamedef::make_server;
 
-use crate::isolate::sandbox::RunningJob;
+use crate::{isolate::sandbox::RunningJob, games::await_seconds};
 
 use super::{Game, PlayerResult};
 
+#[derive(serde::Serialize)]
 pub struct TicTacToe;
 
 make_server!("../../res/games/tic_tac_toe.game");
@@ -61,7 +62,7 @@ impl Game for TicTacToe {
         while turn < 9 {
             let player = turn % 2;
 
-            let m = match agents[player].get_move(&grid).await {
+            let m = match await_seconds(agents[player].get_move(&grid), 1.0).await {
                 Ok(m) => m,
                 Err(e) => {
                     if player == 0 {

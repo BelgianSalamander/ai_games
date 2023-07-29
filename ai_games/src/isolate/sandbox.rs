@@ -273,7 +273,7 @@ impl RunningJob {
         let stdin = Arc::new(Mutex::new(child.stdin.take().unwrap()));
         let stdout = Arc::new(Mutex::new(child.stdout.take().unwrap()));
 
-        stderr.freeze();
+        //stderr.freeze();
 
         RunningJob {
             child,

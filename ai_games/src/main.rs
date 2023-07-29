@@ -4,7 +4,7 @@ use std::{io::Write, path::Path, process::Command, time::Duration};
 
 use gamedef::parser::parse_game_interface;
 
-use crate::{isolate::sandbox::LaunchOptionsBuilder, langs::{python::Python, language::{Language, PreparedProgram}}, games::{oxo::TicTacToe, Game}};
+use crate::{isolate::sandbox::LaunchOptionsBuilder, langs::{python::Python, language::{Language, PreparedProgram}, javascript::make_js_deserializers}, games::{oxo::TicTacToe, Game}};
 
 pub mod isolate;
 pub mod util;
@@ -30,7 +30,11 @@ fn main() {
     const PATH: &str = "res/games/tic_tac_toe.game";
     let content = std::fs::read_to_string(PATH).unwrap();
 
+
     let game_interface = parse_game_interface(&content, "tic_tac_toe".to_string()).unwrap();
+
+    println!("{}", make_js_deserializers(&game_interface));
+    return;
 
     let client_files = Python.prepare_files(&game_interface);
 
@@ -49,6 +53,9 @@ fn main() {
 
         let program_a = Python.launch(&program, &sandbox_one, &game_interface, &client_files);
         let program_b = Python.launch(&program, &sandbox_two, &game_interface, &client_files);
+
+        //Wait 1 second
+        async_std::task::sleep(Duration::from_secs(1)).await;
 
         let programs = vec![program_a, program_b];
 
