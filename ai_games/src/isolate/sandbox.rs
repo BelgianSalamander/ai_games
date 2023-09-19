@@ -1,4 +1,5 @@
 use async_std::io::{Error, Write, Read};
+use futures::AsyncReadExt;
 use std::future::Future;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -154,9 +155,12 @@ pub struct RunningJob {
     stdout: Arc<Mutex<ChildStdout>>,
 
     metafile: TempFile,
-    stderr: TempFile,
+    pub stderr: TempFile,
 
     killed: bool,
+
+    error_message: Option<String>,
+    on_exit: Option<Box<dyn FnOnce(&mut RunningJob) + Sync + Send>>,
 }
 
 pub struct WriteFuture<'data> {
@@ -243,7 +247,6 @@ impl<'data> Future for ReadFuture<'data> {
         match res {
             std::task::Poll::Ready(Ok(0)) => std::task::Poll::Ready(Err(Error::new(ErrorKind::UnexpectedEof, "Unexpected EOF"))),
             std::task::Poll::Ready(Ok(bytes)) => {
-                println!("Read {} bytes", bytes);
                 self.pos += bytes;
                 self.remaining -= bytes;
                 if self.remaining == 0 {
@@ -269,11 +272,9 @@ macro_rules! read_impl {
 }
 
 impl RunningJob {
-    pub fn new(mut child: Child, mut stderr: TempFile, metafile: TempFile) -> Self {
+    pub fn new(mut child: Child, mut stderr: TempFile, metafile: TempFile, on_exit: Option<Box<dyn FnOnce(&mut RunningJob) + Sync + Send>>) -> RunningJob {
         let stdin = Arc::new(Mutex::new(child.stdin.take().unwrap()));
         let stdout = Arc::new(Mutex::new(child.stdout.take().unwrap()));
-
-        //stderr.freeze();
 
         RunningJob {
             child,
@@ -283,7 +284,22 @@ impl RunningJob {
             stderr,
 
             killed: false,
+            error_message: None,
+
+            on_exit,
         }
+    }
+
+    pub fn set_on_exit<T: FnOnce(&mut RunningJob) + Sync + Send + 'static>(&mut self, on_exit: T) {
+        self.on_exit = Some(Box::new(on_exit));
+    }
+
+    pub fn set_error(&mut self, message: String) {
+        self.error_message = Some(message);
+    }
+
+    pub fn get_error(&self) -> Option<&str> {
+        self.error_message.as_deref()
     }
 
     pub async fn write(&mut self, data: &[u8]) -> Result<(), Error> {
@@ -371,7 +387,47 @@ impl RunningJob {
 
         self.killed = true;
 
+        if let Some(on_exit) = self.on_exit.take() {
+            on_exit(self);
+        }
+
         Ok(())
+    }
+
+    pub async fn read_stderr(&self, max: Option<usize>) -> String {
+        let mut file = self.stderr.get_file_async_read().await;
+
+        if let Some(max) = max {
+            let mut buf = vec![0u8; max];
+            let mut num_read = 0; 
+            loop {
+                let res = file.read(&mut buf[num_read..]).await.unwrap();
+
+                if res == 0 {
+                    break;
+                }
+
+                num_read += res;
+            }
+            let mut res = String::from_utf8_lossy(&buf).to_string();
+
+            if num_read == max {
+                //Remove U+FFFD REPLACEMENT CHARACTER if it is last
+                if res.ends_with("\u{FFFD}") {
+                    res.pop();
+                }
+
+                res.push_str("...\n");
+                res.push_str(&format!("(stderr truncated to {} bytes)", max));
+                res
+            } else {
+                res
+            }
+        } else {
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf).await.unwrap();
+            String::from_utf8_lossy(&buf).to_string()
+        }
     }
 }
 
@@ -507,7 +563,7 @@ impl IsolateSandbox {
 
         let child = command.spawn().unwrap();
 
-        RunningJob::new(child, stderr_file, metafile_file)
+        RunningJob::new(child, stderr_file, metafile_file, None)
     }
 }
 

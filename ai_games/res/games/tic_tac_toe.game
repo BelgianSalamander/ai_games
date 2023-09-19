@@ -13,4 +13,4 @@ type Pos = struct {
 
 type Board = [[BoardCell; 3]; 3];
 
-function get_move = (board: Board) -> Pos;
+function get_move = (board: Board, piece: Piece) -> Pos;

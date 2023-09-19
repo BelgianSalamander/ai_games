@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title id = "title">Profile</title>
+        <link rel="stylesheet" href="style/global.css">
+        <link rel="stylesheet" href="style/profile.css">
+        <script src="script/common.js"></script>
+        <script src="script/profile.js"></script>
+    </head>
+    <body onload = "commonLoad();onLoad()">
+        <header>
+            <h1 id = "page-title">[USER]'s Profile</h1>
+        </header>
+        <main>
+            Username: <span id = "username"></span><br>
+            User ID: <span id = "user-id"></span><br>
+
+            <div id = "password-reset-container" style = "display:none;">
+                <button id = "password-reset" onclick = "resetPassword()">Reset Password</button>
+                <label id = "new-password" class = "show-on-hover"></label>
+            </div>
+        </main>
+    </body>
+</html>

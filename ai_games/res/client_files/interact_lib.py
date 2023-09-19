@@ -9,8 +9,6 @@ def read(n):
     while len(res) < n:
         res += READ_BUF.read(n - len(res))
         
-    sys.stderr.write('Read: ' + str(res) + '\n')
-        
     return res
 
 def read_u8():

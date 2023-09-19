@@ -1,16 +1,10 @@
-use std::{future::Future, io::Error};
+use std::{future::Future, io::Error, time::{Duration, Instant}};
 
 use async_trait::async_trait;
 
 use crate::isolate::sandbox::RunningJob;
 
 pub mod oxo;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct PlayerResult {
-    pub score: f32,
-    pub error: Option<String>,
-}
 
 pub async fn await_seconds<Fut, T>(fut: Fut, seconds: f32) -> Result<T, String>
 where
@@ -25,10 +19,49 @@ where
     }
 }
 
-#[async_trait]
-pub trait Game {
-    fn num_players() -> usize;
-    fn name() -> &'static str;
+pub struct Waiter {
+    pub min_delay: Option<Duration>,
+    pub last_tick: Instant
+}
 
-    async fn run(players: Vec<RunningJob>) -> Vec<PlayerResult>;
+impl Waiter {
+    pub fn new(min_delay: Option<Duration>) -> Self {
+        Self {
+            min_delay,
+            last_tick: Instant::now()
+        }
+    }
+
+    pub async fn wait(&mut self) {
+        if let Some(min_delay) = self.min_delay {
+            let elapsed = self.last_tick.elapsed();
+            if elapsed < min_delay {
+                async_std::task::sleep(min_delay - elapsed).await;
+            }
+        }
+        self.last_tick = Instant::now();
+    }
+}
+
+#[async_trait]
+pub trait Game: Sync + Send {
+    fn num_players(&self) -> usize;
+    fn name(&self) -> &'static str;
+
+    async fn run(&self, players: Vec<RunningJob>, min_delay: Option<Duration>) -> Vec<f32>;
+}
+
+#[async_trait]
+impl Game for Box<dyn Game> {
+    fn num_players(&self) -> usize {
+        (**self).num_players()
+    }
+
+    fn name(&self) -> &'static str {
+        (**self).name()
+    }
+
+    async fn run(&self, players: Vec<RunningJob>, min_delay: Option<Duration>) -> Vec<f32> {
+        (**self).run(players, min_delay).await
+    }
 }

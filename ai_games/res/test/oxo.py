@@ -4,8 +4,7 @@ import sys
 import random
 import time
 
-def get_move(board: List[List[BoardCell]]) -> Pos:
-    time.sleep(0.5)
+def get_move(board: List[List[BoardCell]], piece: Piece) -> Pos:
     
     moves = []
 

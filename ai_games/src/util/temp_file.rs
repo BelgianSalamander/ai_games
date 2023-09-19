@@ -53,6 +53,14 @@ impl TempFile {
         File::open(&self.path).unwrap()
     }
 
+    pub async fn get_file_async_read(&self) -> async_std::fs::File {
+        async_std::fs::File::open(&self.path).await.unwrap()
+    }
+
+    pub async fn write_string_async(&self, data: &str) {
+        async_std::fs::write(&self.path, data).await.unwrap();
+    }
+
     pub fn get_file_write(&self) -> File {
         File::create(&self.path).unwrap()
     }

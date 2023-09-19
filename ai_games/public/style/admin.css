@@ -1,0 +1,8 @@
+.profile-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.profile-table table, tr, th, td {
+    border: 1px solid black;
+}

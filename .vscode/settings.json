@@ -1,7 +1,0 @@
-{
-    "rust-analyzer.linkedProjects": [
-        "./ai_games/Cargo.toml",
-        "./ai_games/gamedef/Cargo.toml",
-        "./ai_games/proc-gamedef/Cargo.toml",
-    ]
-}

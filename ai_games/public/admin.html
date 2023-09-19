@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Admin Controls</title>
+        <link rel="stylesheet" href="style/global.css">
+        <link rel="stylesheet" href="style/admin.css">
+        <script src="script/common.js"></script>
+        <script src="script/admin.js"></script>
+    </head>
+    <body onload = "commonLoad();updatePassword()">
+        <header>
+            <h1>Admin Controls</h1>
+        </header>
+        <main>
+            <h2>Admin Password</h2>
+            <div>
+                <input type="password" id="admin-password" placeholder="">
+                <button id="admin-password-set" onclick = "setPassword()">Set</button>
+                <label id="admin-password-status" style="color:orange">Password Unverified</label>
+            </div>
+
+            <div id = "hidden-controls" style = "display:none;">
+                <h3>Profiles</h3>
+                <div>
+                    <table id = "profile-list" class = "profile-table">
+
+                    </table>
+                </div>
+                <h3>Add new profile</h3>
+                <div>
+                    <input placeholder="Username" type="text" id="new-profile-username">
+                    <input placeholder="No. Agents" type="number" id="new-profile-agents" min = "0">
+                    <button id="profile-add" onclick = "addProfile()">Add</button>
+                    <label id="new-profile-status"></label>
+                </div>
+            </div>
+        </main>
+    </body>
+</html>

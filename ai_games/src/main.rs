@@ -1,15 +1,19 @@
+use async_std::sync::Mutex;
 use isolate::sandbox::IsolateSandbox;
+use log::info;
 use proc_gamedef::make_server;
-use std::{io::Write, path::Path, process::Command, time::Duration};
+use std::{io::Write, path::Path, process::Command, time::Duration, sync::Arc};
 
 use gamedef::parser::parse_game_interface;
 
-use crate::{isolate::sandbox::LaunchOptionsBuilder, langs::{python::Python, language::{Language, PreparedProgram}, javascript::make_js_deserializers}, games::{oxo::TicTacToe, Game}};
+use crate::{isolate::{sandbox::LaunchOptionsBuilder}, langs::{python::Python, language::{Language, PreparedProgram}, javascript::make_js_deserializers}, games::{oxo::TicTacToe, Game}, util::pool::Pool, players::{player_list::PlayerList, player::Player, auto_exec::GameRunner}, web::api};
 
 pub mod isolate;
 pub mod util;
 pub mod langs;
 pub mod games;
+pub mod players;
+pub mod web;
 
 make_server!("../res/games/test_game.game");
 
@@ -20,47 +24,69 @@ fn read_file(path: &str) -> String {
 fn main() {
     env_logger::Builder::from_env(
         env_logger::Env::default()
-            .default_filter_or("ai_games=debug")
+            .default_filter_or("ai_games=info")
             .default_write_style_or("always"),
     )
     .format_timestamp(None)
     .format_module_path(false)
     .init();
 
-    const PATH: &str = "res/games/tic_tac_toe.game";
-    let content = std::fs::read_to_string(PATH).unwrap();
+    info!("Clearing tmp/ directory");
+    std::fs::remove_dir_all("./tmp").unwrap_or(());
 
+    let lang = Arc::new(Python);
 
-    let game_interface = parse_game_interface(&content, "tic_tac_toe".to_string()).unwrap();
+    let game: Box<dyn Game> = Box::new(TicTacToe);
 
-    println!("{}", make_js_deserializers(&game_interface));
-    return;
-
-    let client_files = Python.prepare_files(&game_interface);
-
-    let mut program = PreparedProgram::new();
-
-    Python.prepare(
-        &read_file("./res/test/oxo.py"),
-        &mut program,
-        &game_interface,
-        &client_files
-    );
 
     async_std::task::block_on(async {
-        let sandbox_one = IsolateSandbox::new(0).await;
-        let sandbox_two = IsolateSandbox::new(1).await;
+        let runner = Arc::new(GameRunner::new(game, "tic_tac_toe", 10).await);
 
-        let program_a = Python.launch(&program, &sandbox_one, &game_interface, &client_files);
-        let program_b = Python.launch(&program, &sandbox_two, &game_interface, &client_files);
+        //Launch api on new thread
+        let runner_copy = runner.clone();
+        std::thread::spawn(move || {
+            async_std::task::block_on(async {
+                api::launch_and_run_api(runner_copy).await.unwrap();
+            });
+        });
 
-        //Wait 1 second
-        async_std::task::sleep(Duration::from_secs(1)).await;
+        for i in 0..9 {
+            let mut program = PreparedProgram::new();
+    
+            lang.prepare(
+                &read_file("./res/test/oxo.py"), 
+                &mut program,
+                &runner.itf
+            );
+    
+            let player = Player::new(
+                i,
+                format!("Player {}", i),
+                program,
+                lang.clone()
+            );
+    
+            runner.add_player(player).await;
+        }
 
-        let programs = vec![program_a, program_b];
+        let mut program = PreparedProgram::new();
 
-        let results = TicTacToe::run(programs).await;
+        lang.prepare(
+            &read_file("./res/test/half_smart.py"), 
+            &mut program,
+            &runner.itf
+        );
 
-        println!("Results: {:?}", results);
+        let player = Player::new(
+            9,
+            format!("Smartass"),
+            program,
+            lang.clone()
+        );
+
+        runner.add_player(player).await;
+
+        info!("Starting game");
+        runner.run().await;
     });
 }

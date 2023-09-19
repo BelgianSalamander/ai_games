@@ -3,3 +3,4 @@
 /gen
 **/Cargo.lock
 **/target
+**/.vscode

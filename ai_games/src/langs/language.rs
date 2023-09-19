@@ -58,16 +58,16 @@ impl Drop for PreparedProgram {
     }
 }
 
-pub trait Language {
+pub trait Language: Send + Sync {
     fn name(&self) -> &'static str;
     fn id(&self) -> &'static str;
     fn extension(&self) -> &'static str;
 
     fn generate(&self, game_interface: &GameInterface) -> ClientFiles;
 
-    fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface, files: &ClientFiles);
+    fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface);
 
-    fn launch(&self, program: &PreparedProgram, sandbox: &IsolateSandbox, itf: &GameInterface, files: &ClientFiles) -> RunningJob;
+    fn launch(&self, program: &PreparedProgram, sandbox: &IsolateSandbox, itf: &GameInterface) -> RunningJob;
 
     fn get_dir(&self, itf: &GameInterface) -> String {
         format!("gen/{}/{}", itf.name, self.id())

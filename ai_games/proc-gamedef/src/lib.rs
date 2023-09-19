@@ -524,8 +524,6 @@ fn make_interface(itf: &GameInterface, span: &Span) -> TokenStream {
             body.extend(make_serializer(ty, &name, "(&mut out_bytes)").parse::<TokenStream>().unwrap());
         }
 
-        body.extend("println!(\"Sending: {:?}\", out_bytes);".parse::<TokenStream>().unwrap());
-
         body.extend("self.instance.write(&out_bytes).await?;".parse::<TokenStream>().unwrap());
 
         if let Some(ref ty) = function.ret {
@@ -546,6 +544,8 @@ fn make_interface(itf: &GameInterface, span: &Span) -> TokenStream {
         Ok(_) => (),
         Err(e) => log::error!(\"Failed to kill sandbox: {:?}\", e)
     } }".parse::<TokenStream>().unwrap());
+
+    stream.extend("pub fn set_error(&mut self, error: String) { self.instance.set_error(error) }".parse::<TokenStream>().unwrap());
 
     res.extend_one(TokenTree::Group(Group::new(proc_macro::Delimiter::Brace, stream)));
 

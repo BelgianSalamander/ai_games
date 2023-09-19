@@ -438,11 +438,11 @@ impl Language for Python {
         res
     }
 
-    fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface, files: &ClientFiles) {
+    fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface) {
         out.add_file("game.py", src);
     }
 
-    fn launch(&self, program: &PreparedProgram, sandbox: &crate::isolate::sandbox::IsolateSandbox, game_interface: &GameInterface, files: &ClientFiles) -> RunningJob {
+    fn launch(&self, program: &PreparedProgram, sandbox: &crate::isolate::sandbox::IsolateSandbox, game_interface: &GameInterface) -> RunningJob {
         sandbox.launch(
             "/usr/bin/python3".to_string(),
             vec!["/prog/run/interactor.py".to_string()], 
@@ -458,3 +458,6 @@ impl Language for Python {
         )
     }
 }
+
+unsafe impl Send for Python {}
+unsafe impl Sync for Python {}
