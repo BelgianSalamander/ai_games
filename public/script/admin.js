@@ -48,6 +48,93 @@ function updatePassword() {
     setInterval(updateProfileList, 1000);
 }
 
+function generateProfileTable(data) {
+    table = document.getElementById('profile-list');
+    table.innerHTML = '';
+
+    const HEADERS = ['Username', 'Password', 'Id', 'No. Agents', 'Controls'];
+
+    const headerRow = document.createElement('tr');
+    for (const header of HEADERS) {
+        const th = document.createElement('th');
+        th.innerText = header;
+        headerRow.appendChild(th);
+    }
+    table.appendChild(headerRow);
+
+    for (const profile of data) {
+        const row = document.createElement('tr');
+
+        const username = document.createElement('td');
+        const link = document.createElement('a');
+        link.href = `/public/profile.html?id=${profile.id}`;
+        link.innerText = profile.username;
+
+        link.style.color = "#fff";
+        link.style.textDecoration = "none";
+
+        username.appendChild(link);
+        row.appendChild(username);
+
+        const passwordContainer = document.createElement('td');
+        const password = document.createElement('span');
+        password.innerText = profile.password;
+        password.classList.add('show-on-hover');
+        passwordContainer.appendChild(password);
+        row.appendChild(passwordContainer);
+
+        const id = document.createElement('td');
+        id.innerText = profile.id;
+        row.appendChild(id);
+
+        const agentsContainer = document.createElement('td');
+        const agents = document.createElement('input');
+        agents.setAttribute("type", "number");
+        agents.setAttribute("min", "0");
+        agents.value = profile.num_agents_allowed;
+        agents.onchange = e => {
+            console.log(e.target.value);
+            fetch(`/admin/set_profile_agents?username=${profile.username}&agents=${e.target.value}`, {
+                method: 'POST'
+            });
+            updateProfileList();
+        };
+        row.appendChild(agents);
+
+        const controls = document.createElement('td');
+        const delButton = document.createElement('button');
+        delButton.innerText = 'Delete';
+        delButton.onclick = () => {
+            fetch(`/admin/delete_profile?username=${profile.username}`, {
+                method: 'POST'
+            }).then(response => {
+                if (response.status === 200) {
+                    console.log('Profile deleted!');
+                    updateProfileList();
+                } else {
+                    console.log('Profile deletion failed!');
+                    console.log(response);
+                    response.text().then(text => console.log(text));
+                }
+            });
+        };
+        controls.appendChild(delButton);
+
+        const resetButton = document.createElement('button');
+        resetButton.innerText = 'Reset Password';
+        resetButton.onclick = () => {
+            resetPassword(profile.id);
+            updateProfileList();
+        };
+        controls.appendChild(resetButton);
+        row.appendChild(controls);
+
+        table.appendChild(row);
+    }
+}
+
+var prevData = [];
+
 function updateProfileList() {
     if (!authed) return;
     fetch('/admin/profiles').then(response => {
@@ -57,86 +144,9 @@ function updateProfileList() {
             verifyPassword();
         }
     }).then(data => {
-        table = document.getElementById('profile-list');
-        table.innerHTML = '';
-
-        const HEADERS = ['Username', 'Password', 'Id', 'No. Agents', 'Controls'];
-
-        const headerRow = document.createElement('tr');
-        for (const header of HEADERS) {
-            const th = document.createElement('th');
-            th.innerText = header;
-            headerRow.appendChild(th);
-        }
-        table.appendChild(headerRow);
-
-        for (const profile of data) {
-            const row = document.createElement('tr');
-
-            const username = document.createElement('td');
-            const link = document.createElement('a');
-            link.href = `/public/profile.html?id=${profile.id}`;
-            link.innerText = profile.username;
-
-            link.style.color = "#fff";
-            link.style.textDecoration = "none";
-
-            username.appendChild(link);
-            row.appendChild(username);
-
-            const passwordContainer = document.createElement('td');
-            const password = document.createElement('span');
-            password.innerText = profile.password;
-            password.classList.add('show-on-hover');
-            passwordContainer.appendChild(password);
-            row.appendChild(passwordContainer);
-
-            const id = document.createElement('td');
-            id.innerText = profile.id;
-            row.appendChild(id);
-
-            const agentsContainer = document.createElement('td');
-            const agents = document.createElement('input');
-            agents.setAttribute("type", "number");
-            agents.setAttribute("min", "0");
-            agents.value = profile.num_agents_allowed;
-            agents.onchange = e => {
-                console.log(e.target.value);
-                fetch(`/admin/set_profile_agents?username=${profile.username}&agents=${e.target.value}`, {
-                    method: 'POST'
-                });
-            };
-            row.appendChild(agents);
-
-            const controls = document.createElement('td');
-            const delButton = document.createElement('button');
-            delButton.innerText = 'Delete';
-            delButton.onclick = () => {
-                fetch(`/admin/delete_profile?username=${profile.username}`, {
-                    method: 'POST'
-                }).then(response => {
-                    if (response.status === 200) {
-                        console.log('Profile deleted!');
-                        updateProfileList();
-                    } else {
-                        console.log('Profile deletion failed!');
-                        console.log(response);
-                        response.text().then(text => console.log(text));
-                    }
-                });
-            };
-            controls.appendChild(delButton);
-
-            const resetButton = document.createElement('button');
-            resetButton.innerText = 'Reset Password';
-            resetButton.onclick = () => {
-                resetPassword(profile.id);
-                updateProfileList();
-            };
-            controls.appendChild(resetButton);
-            row.appendChild(controls);
-
-            table.appendChild(row);
+        if (!areObjectsEqual(data, prevData)) {
+            generateProfileTable(data);
+            prevData = data;
         }
     });
 }

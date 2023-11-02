@@ -4,6 +4,30 @@ function getCookie(name) {
     if (parts.length === 2) return parts.pop().split(';').shift();
 }
 
+function areObjectsEqual(o1, o2) {
+    if (o1 === o2) return true;
+
+    if (typeof o1 != typeof o2) return false;
+
+    if (typeof o1 === "object") {
+        keys = Object.keys(o1);
+
+        if (Object.keys(o2).length != keys.length) {
+            return false;
+        }
+
+        for (key of keys) {
+            if (!areObjectsEqual(o1[key], o2[key])) {
+                return false;
+            }
+        }
+
+        return true;
+    } else {
+        return false;
+    }
+}
+
 function makeLogin(logStatus) {
     const username = document.createElement("a");
     username.innerText = "Log In";
