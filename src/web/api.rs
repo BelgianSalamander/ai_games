@@ -254,6 +254,39 @@ fn find_profile<'a>(req: &Request, profiles: &'a Vec<Profile>) -> HttpResult<usi
     return Err(Response::basic_error(Status::NotFound, "Profile not found"));
 }
 
+fn find_logged_in_profile(req: &Request, profiles: &Vec<Profile>) -> HttpResult<usize> {
+    let id = match req.cookies.get("id") {
+        Some(id) => {
+            match id.parse::<u32>() {
+                Ok(id) => id,
+                Err(e) => {
+                    return Err(Response::basic_error(Status::BadRequest, &format!("Invalid logged in id: {}", e)));
+                }
+            }
+        }
+
+        None => return Err(Response::basic_error(Status::Forbidden, "Not logged in!"))
+    };
+
+    let password = match req.cookies.get("password") {
+        Some(p) => p,
+        None => return Err(Response::basic_error(Status::Forbidden, "Not logged in!"))
+    };
+
+    for i in 0..profiles.len() {
+        let profile = &profiles[i];
+
+        if profile.id == id {
+            if &profile.password == password {
+                return Ok(i);
+            }
+            break;
+        }
+    }
+
+    Err(Response::basic_error(Status::Forbidden, "Not logged in!"))
+}
+
 fn logged_in(profile: &Profile, req: &Request) -> bool {
     let user_id = match req.cookies.get("id") {
         Some(id) => {
@@ -402,6 +435,16 @@ async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResul
         res.set_body(serde_json::to_string(&arr).unwrap().into_bytes());
 
         Ok(res)
+    } else if req.matches_path_exact(&["api", "agent"]) {
+        let agent_id = req.path.get("agent")?;
+        
+        let profiles = state.profiles.lock().await;
+        let profile = find_logged_in_profile(&req, &profiles)?;
+        let profile = &profiles[profile];
+
+
+
+        Err(Response::basic_error(Status::NotFound, "Not found"))
     } else {
         Err(Response::basic_error(Status::NotFound, "Not found"))
     }
