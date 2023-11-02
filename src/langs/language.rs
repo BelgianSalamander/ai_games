@@ -1,6 +1,7 @@
 use std::{path::Path, fmt::format};
 
 use async_std::path::PathBuf;
+use async_trait::async_trait;
 use gamedef::game_interface::{GameInterface, self};
 use rand::Rng;
 
@@ -10,6 +11,7 @@ use super::files::ClientFiles;
 
 pub struct PreparedProgram {
     pub dir: PathBuf,
+    pub src: Option<PathBuf>,
 
     frozen: bool
 }
@@ -19,6 +21,20 @@ impl PreparedProgram {
         let full_path = self.dir.join(path);
 
         std::fs::write(full_path, content).unwrap();
+    }
+
+    pub fn add_src_file(&mut self, path: &str, content: &str) {
+        match &self.src {
+            None => {
+                let full_path = self.dir.join(path);
+                std::fs::write(full_path.clone(), content).unwrap();
+                self.src = Some(full_path);
+            },
+            Some(s) => {
+                panic!("Source is already set to {:?}", s)
+            }
+        }
+        
     }
 
     pub fn dir_as_string(&self) -> String {
@@ -39,6 +55,7 @@ impl PreparedProgram {
 
         Self {
             dir,
+            src: None,
 
             frozen: false
         }
@@ -65,7 +82,8 @@ pub trait Language: Send + Sync {
 
     fn generate(&self, game_interface: &GameInterface) -> ClientFiles;
 
-    fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface);
+    //TODO: Make prepare async to allow for compiled languages to work
+    fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface) -> Result<(), String>;
 
     fn launch(&self, program: &PreparedProgram, sandbox: &IsolateSandbox, itf: &GameInterface) -> RunningJob;
 

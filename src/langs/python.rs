@@ -438,8 +438,10 @@ impl Language for Python {
         res
     }
 
-    fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface) {
-        out.add_file("game.py", src);
+    fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface) -> Result<(), String> {
+        out.add_src_file("game.py", src);
+
+        Ok(())
     }
 
     fn launch(&self, program: &PreparedProgram, sandbox: &crate::isolate::sandbox::IsolateSandbox, game_interface: &GameInterface) -> RunningJob {

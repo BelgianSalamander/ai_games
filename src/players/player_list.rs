@@ -41,27 +41,4 @@ impl PlayerList {
 
         Some(player)
     }
-
-    pub async fn launch_random_in(&mut self, self_ref: Arc<Mutex<Self>>, pool_ref: &Arc<Mutex<Pool<IsolateSandbox>>>, pool: &mut Pool<IsolateSandbox>, itf: &GameInterface) -> RunningJob {
-        let player = self.get_random_player().unwrap();
-        println!("Player: {}", player.name);
-
-        let (idx, sandbox) = pool.get().unwrap();
-        
-        let mut res = player.launch(sandbox, itf);
-
-        let arc = pool_ref.clone();
-        res.set_on_exit(move |_| {
-            async_std::task::spawn(async move {
-                let mut pool = arc.lock().await;
-                pool.release(idx);
-                drop(pool);
-
-                let mut players = self_ref.lock().await;
-                players.players.push(player);
-            });
-        });
-
-        res
-    }
 }

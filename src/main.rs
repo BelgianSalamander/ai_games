@@ -56,14 +56,18 @@ fn main() {
     let game: Box<dyn Game> = Box::new(TicTacToe);
 
 
-    async_std::task::block_on(async {
+    async_std::task::block_on(async { 
         let runner = Arc::new(GameRunner::new(game, "tic_tac_toe", 10).await);
 
         //Launch api on new thread
         let runner_copy = runner.clone();
+        let itf = runner.itf.clone();
         std::thread::spawn(move || {
             async_std::task::block_on(async {
-                api::launch_and_run_api(runner_copy).await.unwrap();
+                let mut languages: Vec<Arc<dyn Language>> = vec![];
+                languages.push(Arc::new(Python));
+
+                api::launch_and_run_api(runner_copy, languages, itf).await.unwrap();
             });
         });
 
@@ -77,7 +81,7 @@ fn main() {
             );
     
             let player = Player::new(
-                i,
+                runner.make_id(),
                 format!("Player {}", i),
                 program,
                 lang.clone()
@@ -95,7 +99,7 @@ fn main() {
         );
 
         let player = Player::new(
-            9,
+            runner.make_id(),
             format!("Smartass"),
             program,
             lang.clone()

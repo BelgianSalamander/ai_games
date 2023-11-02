@@ -9,17 +9,18 @@ use async_std::{
     sync::Mutex,
 };
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
+use gamedef::game_interface::GameInterface;
 use log::{info, debug};
 use rand::Rng;
 use serde_json::{json, Value};
 
 use crate::{
     games::Game,
-    players::auto_exec::GameRunner,
-    web::http::{Method, Request, Response, Status},
+    players::{auto_exec::GameRunner, player::Player},
+    web::http::{Method, Request, Response, Status}, langs::language::{Language, PreparedProgram},
 };
 
-use super::{profile::Profile, http::HttpError};
+use super::{profile::{Profile, AgentInfo}, http::HttpError};
 
 trait IgnoreResult {
     fn ignore(self);
@@ -31,11 +32,14 @@ impl<T, E> IgnoreResult for Result<T, E> {
 
 type HttpResult<T> = Result<T, Response>;
 
+
 #[derive(Clone)]
 pub struct AppState {
     executor: Arc<GameRunner<Box<dyn Game>>>,
     profiles: Arc<Mutex<Vec<Profile>>>,
     super_secret_admin_password: String,
+    languages: Arc<Vec<Arc<dyn Language>>>,
+    itf: GameInterface
 }
 
 async fn get_all_players(state: AppState) -> String {
@@ -45,7 +49,7 @@ async fn get_all_players(state: AppState) -> String {
 
     for (id, data) in lock.iter() {
         let val = json!({
-            "id": id,
+            "id": id.get(),
             "name": data.name,
             "rating": data.rating as i32,
             "removed": data.removed
@@ -474,6 +478,58 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         }
     } else if req.matches_path_exact(&["api", "reset_password"]) {
         reset_password(&req, &state).await
+    } else if req.matches_path_exact(&["api", "add_agent"]) {
+        let mut profiles = state.profiles.lock().await;
+        let profile = find_profile(&req, &profiles)?;
+        let profile = &mut profiles[profile];
+
+        if !logged_in(profile, &req) {
+            return Err(Response::basic_error(Status::Unauthorized, "Unauthorized"));
+        }
+
+        if profile.agents.len() >= profile.num_agents_allowed {
+            return Err(Response::basic_error(Status::Conflict, &format!("User already has {}/{} agents!", profile.agents.len(), profile.num_agents_allowed)));
+        }
+
+        let src = match String::from_utf8(req.body.clone()) {
+            Err(e) => return Err(Response::basic_error(Status::BadRequest, "Couldn't decode source. Source should be UTF-8")),
+            Ok(s) => s
+        };
+
+        let language_id = req.path.get("lang")?;
+
+        let language = state.languages.iter().filter(|l| l.id() == language_id).next();
+        let language = match language {
+            Some(l) => l,
+            None => return Err(Response::basic_error(Status::BadRequest, &format!("Unknown language {}", language_id)))
+        };
+
+        let id = state.executor.make_id();
+
+        let name = match req.path.get("name") {
+            Ok(s) => s.clone(),
+            Err(_) => format!("Player {}/{}", profile.username, id.get())
+        };
+
+        let mut program = PreparedProgram::new();
+        match language.prepare(&src, &mut program, &state.itf) {
+            Err(s) => return Err(Response::basic_error(Status::BadRequest, &format!("Failed to prepare program! {}", s))),
+            _ => {}
+        }
+
+        let player = Player::new(id, name, program, language.clone());
+
+        state.executor.add_player(player).await;
+
+        profile.agents.push(AgentInfo {
+            id
+        });
+
+        let mut res = Response::new();
+        res.set_status(Status::Ok);
+        res.set_body(id.get().to_string().into_bytes());
+
+        Ok(res)
     } else {
         Err(Response::basic_error(Status::NotFound, "Not found"))
     }
@@ -531,7 +587,7 @@ fn generate_admin_password() -> String {
         .collect()
 }
 
-pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>) -> std::io::Result<()> {
+pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, languages: Vec<Arc<dyn Language>>, itf: GameInterface) -> std::io::Result<()> {
     let addr = SocketAddr::from(([0, 0, 0, 0], 42069));
 
     let listener = TcpListener::bind(addr).await.unwrap();
@@ -540,6 +596,8 @@ pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>) -> std
         executor,
         profiles: Arc::new(Mutex::new(Vec::new())),
         super_secret_admin_password: generate_admin_password(),
+        languages: Arc::new(languages),
+        itf
     };
 
     println!("Admin password: {}", state.super_secret_admin_password);

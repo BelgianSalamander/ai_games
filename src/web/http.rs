@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, str::FromStr};
+use std::{collections::HashMap, fmt, str::FromStr, string::FromUtf8Error};
 
 use crate::util::asyncio::{AsyncReaderWrapper, AsyncWriterWrapper};
 
@@ -256,6 +256,12 @@ pub enum HttpError {
 impl From<std::io::Error> for HttpError {
     fn from(err: std::io::Error) -> Self {
         Self::Io(err)
+    }
+}
+
+impl From<FromUtf8Error> for HttpError {
+    fn from(err: FromUtf8Error) -> Self {
+        Self::Other(format!("Failed to decode a string. All strings should be sent as UTF-8 or ASCII. {:?}", err))
     }
 }
 

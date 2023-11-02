@@ -4,8 +4,10 @@ use gamedef::game_interface::GameInterface;
 
 use crate::{langs::language::{PreparedProgram, Language}, isolate::sandbox::{IsolateSandbox, RunningJob}};
 
+use super::auto_exec::PlayerId;
+
 pub struct Player {
-    pub id: usize,
+    pub id: PlayerId,
     pub name: String,
 
     pub program: PreparedProgram,
@@ -13,7 +15,7 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(id: usize, name: String, program: PreparedProgram, language: Arc<dyn Language>) -> Self {
+    pub fn new(id: PlayerId, name: String, program: PreparedProgram, language: Arc<dyn Language>) -> Self {
         Self {
             id,
             name,

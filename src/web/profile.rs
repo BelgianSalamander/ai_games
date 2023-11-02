@@ -1,6 +1,8 @@
 use lazy_static::lazy_static;
 use rand::seq::SliceRandom;
 
+use crate::players::auto_exec::PlayerId;
+
 lazy_static! {
     pub static ref WORDS: Vec<String> = {
         let mut words = Vec::new();
@@ -50,5 +52,5 @@ impl Profile {
 }
 
 pub struct AgentInfo {
-
+    pub id: PlayerId
 }

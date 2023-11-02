@@ -290,8 +290,32 @@ impl RunningJob {
         }
     }
 
-    pub fn set_on_exit<T: FnOnce(&mut RunningJob) + Sync + Send + 'static>(&mut self, on_exit: T) {
+    fn set_on_exit<T: FnOnce(&mut RunningJob) + Sync + Send + 'static>(&mut self, on_exit: T) {
         self.on_exit = Some(Box::new(on_exit));
+    }
+
+    pub fn add_pre_exit<T: FnOnce(&mut RunningJob) + Sync + Send + 'static>(&mut self, on_exit: T) {
+        match self.on_exit.take() {
+            Some(post) => {
+                self.set_on_exit(move |job| {
+                    on_exit(job);
+                    post(job);
+                })
+            },
+            None => self.set_on_exit(on_exit)
+        }
+    }
+
+    pub fn add_post_exit<T: FnOnce(&mut RunningJob) + Sync + Send + 'static>(&mut self, on_exit: T) {
+        match self.on_exit.take() {
+            Some(pre) => {
+                self.set_on_exit(move |job| {
+                    pre(job);
+                    on_exit(job);
+                })
+            },
+            None => self.set_on_exit(on_exit)
+        }
     }
 
     pub fn set_error(&mut self, message: String) {

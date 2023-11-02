@@ -1,8 +1,8 @@
-use std::{sync::Arc, time::Duration, collections::HashMap};
+use std::{sync::{Arc, atomic::{AtomicUsize, Ordering}}, time::Duration, collections::{HashMap, HashSet}};
 
 use async_std::{sync::Mutex, fs::File};
 use gamedef::{game_interface::GameInterface, parser::parse_game_interface};
-use log::debug;
+use log::{debug, error};
 
 use crate::{
     games::Game, isolate::sandbox::IsolateSandbox, langs::get_all_languages, util::{pool::Pool, temp_file::TempFile},
@@ -10,8 +10,22 @@ use crate::{
 
 use super::{player::Player, player_list::PlayerList};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PlayerId(usize);
+
+impl PlayerId {
+    pub fn new(id: usize) -> Self {
+        PlayerId(id)
+    }
+
+    pub fn get(&self) -> usize {
+        let PlayerId(x) = self;
+        *x
+    }
+}
+
 pub struct PlayerInfo {
-    pub id: usize,
+    pub id: PlayerId,
     pub name: String,
     pub language: &'static str,
 
@@ -21,7 +35,8 @@ pub struct PlayerInfo {
     pub num_games: usize,
 
     pub removed: bool,
-    pub error: Option<TempFile>
+    pub error: Option<TempFile>,
+    pub src: Option<TempFile>
 }
 
 pub struct GameRunner<T: Game + 'static> {
@@ -31,7 +46,8 @@ pub struct GameRunner<T: Game + 'static> {
     pub game: Arc<T>,
     pub itf: GameInterface,
 
-    pub scores: Arc<Mutex<HashMap<usize, PlayerInfo>>>
+    pub scores: Arc<Mutex<HashMap<PlayerId, PlayerInfo>>>,
+    id_counter: AtomicUsize
 }
 
 impl<T: Game + 'static> GameRunner<T> {
@@ -56,11 +72,27 @@ impl<T: Game + 'static> GameRunner<T> {
             game: Arc::new(game),
             itf,
 
-            scores: Arc::new(Mutex::new(HashMap::new()))
+            scores: Arc::new(Mutex::new(HashMap::new())),
+            id_counter: AtomicUsize::new(0)
         }
     }
 
     pub async fn add_player(&self, player: Player) {
+        let src = match &player.program.src {
+            Some(path) => {
+                let res = TempFile::with_extra(".program_src");
+
+                match std::fs::copy(path, &res.path) {
+                    Ok(_) => Some(res),
+                    Err(e) => {
+                        error!("Error while copying file! {:?}", e);
+                        None
+                    }
+                }
+            },
+            None => None
+        };
+
         self.scores.lock().await.insert(player.id, PlayerInfo {
             id: player.id,
             name: player.name.clone(),
@@ -72,7 +104,8 @@ impl<T: Game + 'static> GameRunner<T> {
             num_games: 0,
 
             removed: false,
-            error: None
+            error: None,
+            src
         });
 
         self.players.lock().await.add_player(player);
@@ -102,7 +135,7 @@ impl<T: Game + 'static> GameRunner<T> {
                     let players_copy = self.players.clone();
                     let sandboxes_copy = self.sandboxes.clone();
 
-                    job.set_on_exit(move |job: &mut crate::isolate::sandbox::RunningJob| {
+                    job.add_post_exit(move |job: &mut crate::isolate::sandbox::RunningJob| {
                         async_std::task::block_on(async {
                             if let Some(err) = job.get_error() {
                                 const MAX_READ: usize = 10 * 1024;
@@ -138,7 +171,7 @@ impl<T: Game + 'static> GameRunner<T> {
         }
     }
 
-    async fn update_ratings(players: Vec<usize>, results: Vec<f32>, scores: Arc<Mutex<HashMap<usize, PlayerInfo>>>) {
+    async fn update_ratings(players: Vec<PlayerId>, results: Vec<f32>, scores: Arc<Mutex<HashMap<PlayerId, PlayerInfo>>>) {
         let mut lock = scores.lock().await;
 
         for i in 0..players.len() {
@@ -218,7 +251,12 @@ impl<T: Game + 'static> GameRunner<T> {
         }
     }
 
-    pub async fn get_score(&self, id: usize) -> Option<i32> {
+    pub async fn get_score(&self, id: PlayerId) -> Option<i32> {
         self.scores.lock().await.get(&id).map(|x| x.rating as i32)
+    }
+
+    pub fn make_id(&self) -> PlayerId {
+        let res = self.id_counter.fetch_add(1, Ordering::SeqCst);
+        PlayerId::new(res)
     }
 }
