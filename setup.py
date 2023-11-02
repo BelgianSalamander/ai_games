@@ -1,3 +1,7 @@
+# This setup method is taken mostly from CMS (https://github.com/cms-dev/cms)
+# https://github.com/cms-dev/cms/blob/master/LICENSE.txt
+
+
 import subprocess
 import os
 import pwd
