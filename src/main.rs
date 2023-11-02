@@ -71,42 +71,6 @@ fn main() {
             });
         });
 
-        for i in 0..9 {
-            let mut program = PreparedProgram::new();
-    
-            lang.prepare(
-                &read_file("./res/test/oxo.py"), 
-                &mut program,
-                &runner.itf
-            );
-    
-            let player = Player::new(
-                runner.make_id(),
-                format!("Player {}", i),
-                program,
-                lang.clone()
-            );
-    
-            runner.add_player(player).await;
-        }
-
-        let mut program = PreparedProgram::new();
-
-        lang.prepare(
-            &read_file("./res/test/half_smart.py"), 
-            &mut program,
-            &runner.itf
-        );
-
-        let player = Player::new(
-            runner.make_id(),
-            format!("Smartass"),
-            program,
-            lang.clone()
-        );
-
-        runner.add_player(player).await;
-
         info!("Starting game");
         runner.run().await;
     });

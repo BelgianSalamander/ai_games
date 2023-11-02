@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap, convert::Infallible, mem::MaybeUninit, net::SocketAddr, pin::pin,
-    sync::Arc,
+    sync::Arc, str::FromStr,
 };
 
 use async_std::{
@@ -388,6 +388,22 @@ async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResul
         }).to_string().into_bytes());
 
         Ok(res)
+    } else if req.matches_path_exact(&["api", "lang"]) {
+        let values: Vec<_> = state.languages.iter().map(|l| {
+            json!({
+                "name": l.name(),
+                "id": l.id()
+            })
+        }).collect();
+
+        let arr = Value::Array(values);
+
+        let mut res = Response::new();
+        res.set_status(Status::Ok);
+        res.set_header("Content-Type", "application/json");
+        res.set_body(serde_json::to_string(&arr).unwrap().into_bytes());
+
+        Ok(res)
     } else {
         Err(Response::basic_error(Status::NotFound, "Not found"))
     }
@@ -491,12 +507,30 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
             return Err(Response::basic_error(Status::Conflict, &format!("User already has {}/{} agents!", profile.agents.len(), profile.num_agents_allowed)));
         }
 
-        let src = match String::from_utf8(req.body.clone()) {
-            Err(e) => return Err(Response::basic_error(Status::BadRequest, "Couldn't decode source. Source should be UTF-8")),
+        let data = match String::from_utf8(req.body.clone()) {
+            Err(e) => return Err(Response::basic_error(Status::BadRequest, "Couldn't decode body. body should be UTF-8")),
             Ok(s) => s
         };
 
-        let language_id = req.path.get("lang")?;
+        let data = match Value::from_str(&data) {
+            Ok(Value::Object(map)) => map,
+            _ => return Err(Response::basic_error(Status::BadRequest, "Couldn't parse json body"))
+        };
+
+        let src = match data.get("src") {
+            Some(Value::String(d)) => d,
+            _ => return Err(Response::basic_error(Status::BadRequest, "Expected key 'src'"))
+        };
+
+        let language_id = match data.get("lang") {
+            Some(Value::String(d)) => d,
+            _ => return Err(Response::basic_error(Status::BadRequest, "Expected key 'lang'"))
+        };
+
+        let name = match data.get("name") {
+            Some(Value::String(d)) => d,
+            _ => return Err(Response::basic_error(Status::BadRequest, "Expected key 'name'"))
+        };
 
         let language = state.languages.iter().filter(|l| l.id() == language_id).next();
         let language = match language {
@@ -506,10 +540,17 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
 
         let id = state.executor.make_id();
 
-        let name = match req.path.get("name") {
-            Ok(s) => s.clone(),
-            Err(_) => format!("Player {}/{}", profile.username, id.get())
-        };
+        let mut in_use = false;
+        for player in state.executor.scores.lock().await.values() {
+            if player.name.to_lowercase() == name.to_lowercase() {
+                in_use = true;
+                break;
+            }
+        }
+
+        if in_use {
+            return Err(Response::basic_error(Status::BadRequest, &format!("Agent name already used!")));
+        }
 
         let mut program = PreparedProgram::new();
         match language.prepare(&src, &mut program, &state.itf) {
@@ -517,7 +558,7 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
             _ => {}
         }
 
-        let player = Player::new(id, name, program, language.clone());
+        let player = Player::new(id, name.clone(), program, language.clone());
 
         state.executor.add_player(player).await;
 
@@ -527,7 +568,10 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
 
         let mut res = Response::new();
         res.set_status(Status::Ok);
-        res.set_body(id.get().to_string().into_bytes());
+        res.set_header("Content-Type", "application/json");
+        res.set_body(serde_json::to_string(&json!({
+            "agent_id": id.get()
+        })).unwrap().into_bytes());
 
         Ok(res)
     } else {
