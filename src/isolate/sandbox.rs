@@ -441,6 +441,8 @@ impl Drop for RunningJob {
     }
 }
 
+const ISOLATE_PATH: &str = "isolate";
+
 impl IsolateSandbox {
     pub async fn new(id: u32) -> IsolateSandbox {
         let mut sandbox = IsolateSandbox {
@@ -456,7 +458,7 @@ impl IsolateSandbox {
 
     async fn initialize(&mut self) {
         info!("Initializing sandbox {}", self.box_id);
-        let mut command = Command::new("isolate");
+        let mut command = Command::new(ISOLATE_PATH);
 
         command.arg("--init");
         command.arg("--box-id");
@@ -475,7 +477,7 @@ impl IsolateSandbox {
 
     async fn cleanup(&self) {
         info!("Cleaning up sandbox {}", self.box_id);
-        let mut command = Command::new("isolate");
+        let mut command = Command::new(ISOLATE_PATH);
 
         command.arg("--cleanup");
         command.arg("--box-id");
@@ -492,7 +494,7 @@ impl IsolateSandbox {
         stdin_file: Option<String>, options: &LaunchOptions
     ) -> RunningJob {
         trace!("Launching command {} in sandbox {}", program, self.box_id);
-        let mut command = Command::new("isolate");
+        let mut command = Command::new(ISOLATE_PATH);
 
         let metafile_file = TempFile::with_extra(".meta");
         let stderr_file = TempFile::with_extra(".stderr");

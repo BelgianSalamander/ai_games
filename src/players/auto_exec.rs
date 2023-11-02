@@ -130,6 +130,7 @@ impl<T: Game + 'static> GameRunner<T> {
                 let scores_copy = self.scores.clone();
                 async_std::task::spawn(async move {
                     let results = game_copy.run(agents, None).await;
+                    debug!("Game results: {:?}", results);
 
                     Self::update_ratings(ids, results, scores_copy).await;
                 });

@@ -2,7 +2,7 @@ use async_std::sync::Mutex;
 use isolate::sandbox::IsolateSandbox;
 use log::info;
 use proc_gamedef::make_server;
-use std::{io::Write, path::Path, process::Command, time::Duration, sync::Arc};
+use std::{io::Write, path::Path, process::{Command, exit}, time::Duration, sync::Arc, env};
 
 use gamedef::parser::parse_game_interface;
 
@@ -21,7 +21,24 @@ fn read_file(path: &str) -> String {
     std::fs::read_to_string(path).unwrap()
 }
 
+fn ensure_root() {
+    match env::var("USER") {
+        Err(e) => {
+            println!("Something went wrong: {:?}", e);
+            exit(2);
+        },
+        Ok(name) => {
+            if name != "root" {
+                println!("Must be started as root");
+                exit(1);
+            }
+        }
+    }
+}
+
 fn main() {
+    ensure_root();
+
     env_logger::Builder::from_env(
         env_logger::Env::default()
             .default_filter_or("ai_games=info")
