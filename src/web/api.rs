@@ -20,7 +20,7 @@ use crate::{
     web::http::{Method, Request, Response, Status}, langs::language::{Language, PreparedProgram},
 };
 
-use super::{profile::{Profile, AgentInfo}, http::HttpError};
+use super::{profile::{Profile, AgentInfo}, http::HttpError, web_errors::{HttpResult, decode_utf8, parse_json, ValueCast, parse_json_as_object, HttpErrorMap}};
 
 trait IgnoreResult {
     fn ignore(self);
@@ -29,8 +29,6 @@ trait IgnoreResult {
 impl<T, E> IgnoreResult for Result<T, E> {
     fn ignore(self) {}
 }
-
-type HttpResult<T> = Result<T, Response>;
 
 
 #[derive(Clone)]
@@ -507,30 +505,13 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
             return Err(Response::basic_error(Status::Conflict, &format!("User already has {}/{} agents!", profile.agents.len(), profile.num_agents_allowed)));
         }
 
-        let data = match String::from_utf8(req.body.clone()) {
-            Err(e) => return Err(Response::basic_error(Status::BadRequest, "Couldn't decode body. body should be UTF-8")),
-            Ok(s) => s
-        };
+        let data = decode_utf8(req.body.clone())?;
 
-        let data = match Value::from_str(&data) {
-            Ok(Value::Object(map)) => map,
-            _ => return Err(Response::basic_error(Status::BadRequest, "Couldn't parse json body"))
-        };
+        let data = parse_json_as_object(&data)?;
 
-        let src = match data.get("src") {
-            Some(Value::String(d)) => d,
-            _ => return Err(Response::basic_error(Status::BadRequest, "Expected key 'src'"))
-        };
-
-        let language_id = match data.get("lang") {
-            Some(Value::String(d)) => d,
-            _ => return Err(Response::basic_error(Status::BadRequest, "Expected key 'lang'"))
-        };
-
-        let name = match data.get("name") {
-            Some(Value::String(d)) => d,
-            _ => return Err(Response::basic_error(Status::BadRequest, "Expected key 'name'"))
-        };
+        let src = data.try_get("src")?.try_as_str()?;
+        let language_id = data.try_get("lang")?.try_as_str()?;
+        let name = data.try_get("name")?.try_as_str()?;
 
         let language = state.languages.iter().filter(|l| l.id() == language_id).next();
         let language = match language {
@@ -558,7 +539,7 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
             _ => {}
         }
 
-        let player = Player::new(id, name.clone(), program, language.clone());
+        let player = Player::new(id, name.to_string(), program, language.clone());
 
         state.executor.add_player(player).await;
 
