@@ -444,13 +444,13 @@ impl Language for Python {
         Ok(())
     }
 
-    fn launch(&self, program: &PreparedProgram, sandbox: &crate::isolate::sandbox::IsolateSandbox, game_interface: &GameInterface) -> RunningJob {
+    fn launch(&self, data_dir: &str, sandbox: &crate::isolate::sandbox::IsolateSandbox, game_interface: &GameInterface) -> RunningJob {
         sandbox.launch(
             "/usr/bin/python3".to_string(),
             vec!["/prog/run/interactor.py".to_string()], 
             vec![
                 (self.get_dir(game_interface), "/prog".to_string()),
-                (program.dir_as_string(), "/game".to_string())
+                (data_dir.to_string(), "/game".to_string())
             ],
             vec![
                 ("PYTHONPATH".to_string(), "/game".to_string())

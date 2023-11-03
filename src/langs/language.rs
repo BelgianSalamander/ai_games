@@ -85,7 +85,7 @@ pub trait Language: Send + Sync {
     //TODO: Make prepare async to allow for compiled languages to work
     fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface) -> Result<(), String>;
 
-    fn launch(&self, program: &PreparedProgram, sandbox: &IsolateSandbox, itf: &GameInterface) -> RunningJob;
+    fn launch(&self, data_dir: &str, sandbox: &IsolateSandbox, itf: &GameInterface) -> RunningJob;
 
     fn get_dir(&self, itf: &GameInterface) -> String {
         format!("gen/{}/{}", itf.name, self.id())

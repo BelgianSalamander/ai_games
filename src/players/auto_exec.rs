@@ -3,12 +3,14 @@ use std::{sync::{Arc, atomic::{AtomicUsize, Ordering}}, time::Duration, collecti
 use async_std::{sync::Mutex, fs::File};
 use gamedef::{game_interface::GameInterface, parser::parse_game_interface};
 use log::{debug, error};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QueryOrder, sea_query::{Func, SimpleExpr}, QuerySelect, OrderedStatement, QueryTrait, ActiveValue, ActiveModelTrait};
 
 use crate::{
-    games::Game, isolate::sandbox::IsolateSandbox, langs::get_all_languages, util::{pool::Pool, temp_file::TempFile},
+    games::Game, isolate::sandbox::IsolateSandbox, langs::{get_all_languages, language::Language}, util::{pool::Pool, temp_file::TempFile}, entities::{agent, self},
 };
 
 use super::{player::Player, player_list::PlayerList};
+use crate::entities::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PlayerId(usize);
@@ -41,17 +43,15 @@ pub struct PlayerInfo {
 
 pub struct GameRunner<T: Game + 'static> {
     sandboxes: Arc<Mutex<Pool<IsolateSandbox>>>,
-    players: Arc<Mutex<PlayerList>>,
+    db: DatabaseConnection,
 
     pub game: Arc<T>,
     pub itf: GameInterface,
-
-    pub scores: Arc<Mutex<HashMap<PlayerId, PlayerInfo>>>,
-    id_counter: AtomicUsize
+    languages: Vec<Arc<dyn Language>>
 }
 
 impl<T: Game + 'static> GameRunner<T> {
-    pub async fn new(game: T, name: &str, num_sandboxes: usize) -> Self {
+    pub async fn new(game: T, name: &str, num_sandboxes: usize, db: DatabaseConnection, languages: Vec<Arc<dyn Language>>) -> Self {
         let itf_path = format!("res/games/{}.game", name);
         let itf = std::fs::read_to_string(itf_path).unwrap();
         let itf = parse_game_interface(&itf, name.to_string()).unwrap();
@@ -67,13 +67,11 @@ impl<T: Game + 'static> GameRunner<T> {
 
         Self {
             sandboxes: pool,
-            players,
+            db,
 
             game: Arc::new(game),
             itf,
-
-            scores: Arc::new(Mutex::new(HashMap::new())),
-            id_counter: AtomicUsize::new(0)
+            languages
         }
     }
 
@@ -111,12 +109,56 @@ impl<T: Game + 'static> GameRunner<T> {
         self.players.lock().await.add_player(player);
     }
 
+    pub fn get_language(&self, language: &str) -> Option<&Arc<dyn Language>> {
+        self.languages.iter().find(|l| l.id() == language)
+    }
+
     pub async fn run(&self) {
         loop {
             async_std::task::sleep(Duration::from_secs(1)).await;
 
-            let mut players = self.players.lock().await;
+            let mut players = Agent::find()
+                .filter(agent::Column::InGame.eq(false))
+                .filter(agent::Column::Removed.eq(false))
+                .order_by_asc(SimpleExpr::FunctionCall(Func::random()))
+                .limit(self.game.num_players() as u64)
+                .all(&self.db).await.unwrap();
+
+            if players.len() < self.game.num_players() {
+                continue;
+            }
+
             let mut pool = self.sandboxes.lock().await;
+            if pool.num_available() < self.game.num_players() {
+                continue;
+            }
+
+            let mut players: Vec<_> = futures::future::join_all(players.into_iter().map(|p| {
+                let active: entities::agent::ActiveModel = p.into();
+                active.in_game = ActiveValue::Set(true);
+                active.update(&self.db)
+            })).await.into_iter().map(|x| x.unwrap()).collect();
+
+            let mut agents = vec![];
+            let mut sandboxes_to_free = vec![];
+
+            for player in players {
+                let language = self.get_language(&player.language).unwrap();
+
+                let (sandbox_id, sandbox) = pool.get().unwrap();
+
+                agents.push(language.launch(&player.directory, sandbox, &self.itf));
+                sandboxes_to_free.push(sandbox_id);
+            }
+
+            let game_copy = self.game.clone();
+            let dp_copy = self.db.clone();
+
+            async_std::task::spawn(async move {
+                let results = game_copy.run(agents, None).await;
+
+                Self::update_ratings(players, results, db_copy);
+            });
 
             while players.num_available() >= self.game.num_players()
                 && pool.num_available() >= self.game.num_players()

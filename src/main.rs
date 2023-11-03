@@ -2,6 +2,8 @@ use async_std::sync::Mutex;
 use isolate::sandbox::IsolateSandbox;
 use log::info;
 use proc_gamedef::make_server;
+use sea_orm::{DbErr, Database, EntityTrait, QueryFilter};
+use util::DATABASE_URL;
 use std::{io::Write, path::Path, process::{Command, exit}, time::Duration, sync::Arc, env};
 
 use gamedef::parser::parse_game_interface;
@@ -14,6 +16,7 @@ pub mod langs;
 pub mod games;
 pub mod players;
 pub mod web;
+pub mod entities;
 
 make_server!("../res/games/test_game.game");
 
@@ -36,8 +39,14 @@ fn ensure_root() {
     }
 }
 
+async fn db_test() -> Result<(), DbErr> {
+    let db = Database::connect(DATABASE_URL).await?;
+
+    Ok(())
+}
+
 fn main() {
-    ensure_root();
+    //ensure_root();
 
     env_logger::Builder::from_env(
         env_logger::Env::default()
@@ -47,6 +56,9 @@ fn main() {
     .format_timestamp(None)
     .format_module_path(false)
     .init();
+
+    async_std::task::block_on(db_test()).unwrap();
+    return;
 
     info!("Clearing tmp/ directory");
     std::fs::remove_dir_all("./tmp").unwrap_or(());

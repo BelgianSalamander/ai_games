@@ -16,6 +16,7 @@ rand = "0.8.5"
 serde = { version = "1.0.104", features = ["derive"] }
 serde_json = "1.0.104"
 lazy_static = "1.4.0"
+sea-orm = { version = "^0.12.0", features = ["sqlx-sqlite", "runtime-async-std-native-tls", "macros" ]}
 
 [dependencies.async-std]
 version = "1.7.0"
