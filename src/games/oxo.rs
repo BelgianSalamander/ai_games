@@ -54,7 +54,7 @@ impl Game for TicTacToe {
         2
     }
 
-    async fn run(&self, players: Vec<RunningJob>, min_delay: Option<Duration>) -> Vec<f32> {
+    async fn run(&self, players: &mut Vec<RunningJob>, min_delay: Option<Duration>) -> Vec<f32> {
         let mut waiter = Waiter::new(min_delay);
         let mut agents: Vec<_> = players.into_iter().map(|x| Agent::new(x)).collect();
 

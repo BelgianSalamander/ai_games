@@ -469,15 +469,15 @@ fn make_interface(itf: &GameInterface, span: &Span) -> TokenStream {
     }
 
     res.extend("
-    struct Agent {
-        instance: crate::isolate::sandbox::RunningJob
+    struct Agent<'a> {
+        instance: &'a mut  crate::isolate::sandbox::RunningJob
     }".parse::<TokenStream>().unwrap());
 
-    res.extend("impl Agent".parse::<TokenStream>().unwrap());
+    res.extend("impl<'a> Agent<'a>".parse::<TokenStream>().unwrap());
 
     let mut stream = TokenStream::new();
 
-    stream.extend("pub fn new(instance: crate::isolate::sandbox::RunningJob) -> Self { Self {instance} }".parse::<TokenStream>().unwrap());
+    stream.extend("pub fn new(instance: &'a mut crate::isolate::sandbox::RunningJob) -> Self { Self {instance} }".parse::<TokenStream>().unwrap());
 
     for (i, (name, function)) in itf.functions.iter().enumerate() {
         stream.extend(format!("pub async fn {}", name).parse::<TokenStream>().unwrap());

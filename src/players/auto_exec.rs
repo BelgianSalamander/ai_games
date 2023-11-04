@@ -2,14 +2,13 @@ use std::{sync::{Arc, atomic::{AtomicUsize, Ordering}}, time::Duration, collecti
 
 use async_std::{sync::Mutex, fs::File};
 use gamedef::{game_interface::GameInterface, parser::parse_game_interface};
-use log::{debug, error};
+use log::{debug, error, warn, info};
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QueryOrder, sea_query::{Func, SimpleExpr}, QuerySelect, OrderedStatement, QueryTrait, ActiveValue, ActiveModelTrait};
 
 use crate::{
-    games::Game, isolate::sandbox::IsolateSandbox, langs::{get_all_languages, language::Language}, util::{pool::Pool, temp_file::TempFile}, entities::{agent, self},
+    games::Game, isolate::sandbox::IsolateSandbox, langs::{get_all_languages, language::Language}, util::{pool::Pool, temp_file::TempFile, ActiveValueExtension}, entities::{agent, self},
 };
 
-use super::{player::Player, player_list::PlayerList};
 use crate::entities::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -63,8 +62,6 @@ impl<T: Game + 'static> GameRunner<T> {
         let pool = Pool::new_async(num_sandboxes, |i| IsolateSandbox::new(i as _)).await;
         let pool = Arc::new(Mutex::new(pool));
 
-        let players = Arc::new(Mutex::new(PlayerList::new()));
-
         Self {
             sandboxes: pool,
             db,
@@ -75,54 +72,35 @@ impl<T: Game + 'static> GameRunner<T> {
         }
     }
 
-    pub async fn add_player(&self, player: Player) {
-        let src = match &player.program.src {
-            Some(path) => {
-                let res = TempFile::with_extra(".program_src");
-
-                match std::fs::copy(path, &res.path) {
-                    Ok(_) => Some(res),
-                    Err(e) => {
-                        error!("Error while copying file! {:?}", e);
-                        None
-                    }
-                }
-            },
-            None => None
+    pub async fn add_player(&self, name: String, language: String, directory: String, source_file: Option<String>) -> i32 {
+        let agent = agent::ActiveModel {
+            name: ActiveValue::Set(name),
+            language: ActiveValue::Set(language),
+            directory: ActiveValue::Set(directory),
+            source_file: ActiveValue::Set(source_file),
+            ..Default::default()
         };
+        let res = Agent::insert(agent).exec(&self.db).await.unwrap();
 
-        self.scores.lock().await.insert(player.id, PlayerInfo {
-            id: player.id,
-            name: player.name.clone(),
-            language: player.language.name(),
-
-            rating: 1000.0,
-
-            average_score: 0.0,
-            num_games: 0,
-
-            removed: false,
-            error: None,
-            src
-        });
-
-        self.players.lock().await.add_player(player);
+        res.last_insert_id
     }
 
     pub fn get_language(&self, language: &str) -> Option<&Arc<dyn Language>> {
         self.languages.iter().find(|l| l.id() == language)
     }
 
-    pub async fn run(&self) {
+    pub async fn run(&self) -> ! {
         loop {
             async_std::task::sleep(Duration::from_secs(1)).await;
 
-            let mut players = Agent::find()
+            let players = Agent::find()
                 .filter(agent::Column::InGame.eq(false))
                 .filter(agent::Column::Removed.eq(false))
                 .order_by_asc(SimpleExpr::FunctionCall(Func::random()))
                 .limit(self.game.num_players() as u64)
                 .all(&self.db).await.unwrap();
+
+            debug!("Found {} available players ({:?})", players.len(), players);
 
             if players.len() < self.game.num_players() {
                 continue;
@@ -133,8 +111,8 @@ impl<T: Game + 'static> GameRunner<T> {
                 continue;
             }
 
-            let mut players: Vec<_> = futures::future::join_all(players.into_iter().map(|p| {
-                let active: entities::agent::ActiveModel = p.into();
+            let players: Vec<_> = futures::future::join_all(players.into_iter().map(|p| {
+                let mut active: entities::agent::ActiveModel = p.into();
                 active.in_game = ActiveValue::Set(true);
                 active.update(&self.db)
             })).await.into_iter().map(|x| x.unwrap()).collect();
@@ -142,88 +120,65 @@ impl<T: Game + 'static> GameRunner<T> {
             let mut agents = vec![];
             let mut sandboxes_to_free = vec![];
 
-            for player in players {
+            for player in players.iter() {
                 let language = self.get_language(&player.language).unwrap();
 
                 let (sandbox_id, sandbox) = pool.get().unwrap();
 
+                //TODO: Free sandbox as soon as it can be freed?
                 agents.push(language.launch(&player.directory, sandbox, &self.itf));
                 sandboxes_to_free.push(sandbox_id);
             }
 
             let game_copy = self.game.clone();
-            let dp_copy = self.db.clone();
+            let db_copy = self.db.clone();
 
+            let sandboxes = self.sandboxes.clone();
             async_std::task::spawn(async move {
-                let results = game_copy.run(agents, None).await;
+                info!("Starting a game!");
+                let results = game_copy.run(&mut agents, None).await;
 
-                Self::update_ratings(players, results, db_copy);
-            });
-
-            while players.num_available() >= self.game.num_players()
-                && pool.num_available() >= self.game.num_players()
-            {
-                let mut ids = vec![];
-                let mut agents = vec![];
-
-                for _ in 0..self.game.num_players() {
-                    let player = players.get_random_player().unwrap();
-                    ids.push(player.id);
-                    let (sandbox_idx, sandbox) = pool.get().unwrap();
-
-                    //debug!("Launching player {} in sandbox {}", player.id, sandbox_idx);
-                    let mut job = player.launch(sandbox, &self.itf);
-
-                    let players_copy = self.players.clone();
-                    let sandboxes_copy = self.sandboxes.clone();
-
-                    job.add_post_exit(move |job: &mut crate::isolate::sandbox::RunningJob| {
-                        async_std::task::block_on(async {
-                            if let Some(err) = job.get_error() {
-                                const MAX_READ: usize = 10 * 1024;
-
-                                let stderr_contents = job.read_stderr(Some(MAX_READ)).await;
-                                let displayed_error = format!("Error: {}\nStderr:\n{}", err, stderr_contents);
-
-                                let stderr_store = TempFile::new();
-                                stderr_store.write_string_async(&displayed_error).await;
-
-                                player.on_removal(&displayed_error);
-                            } else {
-                                players_copy.lock().await.add_player(player);
-                            }
-
-                            sandboxes_copy.lock().await.release(sandbox_idx);
-                        });
-                    });
-
-                    agents.push(job);
+                for idx in sandboxes_to_free {
+                    sandboxes.lock().await.release(idx);
                 }
 
-                let game_copy = self.game.clone();
+                let mut players: Vec<entities::agent::ActiveModel> = players.into_iter().map(|p| p.into()).collect();
 
-                let scores_copy = self.scores.clone();
-                async_std::task::spawn(async move {
-                    let results = game_copy.run(agents, None).await;
-                    debug!("Game results: {:?}", results);
+                for i in 0..agents.len() {
+                    if let Some(err) = agents[i].get_error() {
+                        const MAX_READ: usize = 10 * 1024;
 
-                    Self::update_ratings(ids, results, scores_copy).await;
-                });
-            }
+                        let stderr_contents = agents[i].read_stderr(Some(MAX_READ)).await;
+                        let displayed_error = format!("Error: {}\nStderr:\n{}", err, stderr_contents);
+
+                        //TODO: Don't use a temp file cause it shoudl persist (this goes for a lot of other things as well). Current workaround is to freeze
+                        let mut stderr_store = TempFile::new();
+                        stderr_store.freeze();
+                        stderr_store.write_string_async(&displayed_error).await;
+
+                        players[i].error_file = ActiveValue::Set(Some(stderr_store.path.clone()));
+                        players[i].removed = ActiveValue::Set(true);
+
+                        warn!("Player {} removed.\n{}", players[i].name.get().unwrap(), displayed_error);
+                    }
+                }
+
+                Self::update_ratings(&mut players, results).await;
+
+                for mut player in players {
+                    player.in_game = ActiveValue::Set(false);
+                    player.update(&db_copy).await.unwrap();
+                }
+            });
         }
     }
 
-    async fn update_ratings(players: Vec<PlayerId>, results: Vec<f32>, scores: Arc<Mutex<HashMap<PlayerId, PlayerInfo>>>) {
-        let mut lock = scores.lock().await;
-
+    async fn update_ratings(players: &mut Vec<entities::agent::ActiveModel>, results: Vec<f32>) {
         for i in 0..players.len() {
-            let id = players[i];
-            let result = results[i];
+            let player = &mut players[i];
 
-            let score = lock.get_mut(&id).unwrap();
-
-            score.average_score = (score.average_score * score.num_games as f32 + result) / (score.num_games + 1) as f32;
-            score.num_games += 1;
+            player.total_score = ActiveValue::Set(player.total_score.get().unwrap() + results[i] as f64);
+            player.num_games = ActiveValue::Set(player.num_games.get().unwrap() + 1);
         }
 
         let n = players.len();
@@ -235,7 +190,7 @@ impl<T: Game + 'static> GameRunner<T> {
 
         merged.sort_by_key(|(_, score)| *score as i32);
 
-        let curr_ratings = merged.iter().map(|(id, _)| lock[id].rating).collect::<Vec<_>>();
+        let curr_ratings = merged.iter().map(|(player, _)| *player.rating.get().unwrap() as f32).collect::<Vec<_>>();
 
         let num_pairings = n * (n - 1) / 2;
 
@@ -289,16 +244,11 @@ impl<T: Game + 'static> GameRunner<T> {
         }).collect::<Vec<_>>();
 
         for i in 0..n {
-            lock.get_mut(&merged[i].0).unwrap().rating = new_scores[i];
+            merged[i].0.rating = ActiveValue::Set(new_scores[i] as _);
         }
     }
 
-    pub async fn get_score(&self, id: PlayerId) -> Option<i32> {
-        self.scores.lock().await.get(&id).map(|x| x.rating as i32)
-    }
-
-    pub fn make_id(&self) -> PlayerId {
-        let res = self.id_counter.fetch_add(1, Ordering::SeqCst);
-        PlayerId::new(res)
+    pub async fn get_score(&self, id: i32) -> Option<i32> {
+        Agent::find_by_id(id).one(&self.db).await.unwrap().map(|x| x.rating as i32)
     }
 }
