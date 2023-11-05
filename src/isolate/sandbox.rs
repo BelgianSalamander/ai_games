@@ -433,7 +433,7 @@ impl RunningJob {
 
                 num_read += res;
             }
-            let mut res = String::from_utf8_lossy(&buf).to_string();
+            let mut res = String::from_utf8_lossy(&buf[..num_read]).to_string();
 
             if num_read == max {
                 //Remove U+FFFD REPLACEMENT CHARACTER if it is last

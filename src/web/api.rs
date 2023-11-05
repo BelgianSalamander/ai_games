@@ -6,7 +6,7 @@ use std::{
 use async_std::{
     net::{TcpListener, TcpStream},
     stream::Map,
-    sync::Mutex,
+    sync::Mutex, path::Path,
 };
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 use gamedef::game_interface::GameInterface;
@@ -18,10 +18,10 @@ use serde_json::{json, Value};
 use crate::{
     games::Game,
     players::{auto_exec::GameRunner},
-    web::http::{Method, Request, Response, Status}, langs::language::{Language, PreparedProgram}, entities::{self, user},
+    web::http::{Method, Request, Response, Status}, langs::language::{Language, PreparedProgram}, entities::{self, user, agent},
 };
 
-use super::{profile::{Profile, AgentInfo, generate_password}, http::HttpError, web_errors::{HttpResult, decode_utf8, parse_json, ValueCast, parse_json_as_object, HttpErrorMap}};
+use super::{profile::{Profile, AgentInfo, generate_password, get_num_agents}, http::HttpError, web_errors::{HttpResult, decode_utf8, parse_json, ValueCast, parse_json_as_object, HttpErrorMap}};
 
 trait IgnoreResult {
     fn ignore(self);
@@ -205,70 +205,6 @@ async fn get_user(req: &Request, state: &AppState) -> Option<entities::user::Mod
     user
 }
 
-// If the profile was not found, an error message is sent
-/*fn find_profile<'a>(req: &Request, profiles: &'a Vec<Profile>) -> HttpResult<usize> {
-    let id = match req.path.query.get("id") {
-        Some(id) => {
-            match id.parse::<u32>() {
-                Ok(id) => Some(id),
-                Err(e) => {
-                    return Err(Response::basic_error(Status::BadRequest, &format!("Invalid id: {}", e)));
-                }
-            }
-        }
-        None => None
-    };
-
-    let username = req.path.query.get("username");
-
-    if id == None && username == None {
-        return Err(Response::basic_error(Status::BadRequest, "Missing id or username"));
-    }
-
-    for i in 0..profiles.len() {
-        let profile = &profiles[i];
-
-        if (id == None || Some(profile.id) == id) && (username == None || Some(&profile.username) == username) {
-            return Ok(i)
-        }
-    }
-
-    return Err(Response::basic_error(Status::NotFound, "Profile not found"));
-}*/
-
-/*fn find_logged_in_profile(req: &Request, profiles: &Vec<Profile>) -> HttpResult<usize> {
-    let id = match req.cookies.get("id") {
-        Some(id) => {
-            match id.parse::<u32>() {
-                Ok(id) => id,
-                Err(e) => {
-                    return Err(Response::basic_error(Status::BadRequest, &format!("Invalid logged in id: {}", e)));
-                }
-            }
-        }
-
-        None => return Err(Response::basic_error(Status::Forbidden, "Not logged in!"))
-    };
-
-    let password = match req.cookies.get("password") {
-        Some(p) => p,
-        None => return Err(Response::basic_error(Status::Forbidden, "Not logged in!"))
-    };
-
-    for i in 0..profiles.len() {
-        let profile = &profiles[i];
-
-        if profile.id == id {
-            if &profile.password == password {
-                return Ok(i);
-            }
-            break;
-        }
-    }
-
-    Err(Response::basic_error(Status::Forbidden, "Not logged in!"))
-}*/
-
 async fn get_profile_data(req: &Request, state: &AppState) -> HttpResult<Response> {
     let id = match req.path.query.get("id") {
         Some(id) => {
@@ -451,13 +387,44 @@ async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResul
 
         Ok(res)
     } else if req.matches_path_exact(&["api", "agent"]) {
-        let agent_id = req.path.get("agent")?;
-        
-        //TODO
+        info!("Querying agent!");
+        let agent_id: i32 = req.path.parse_query("agent")?;
+        let send_error: bool = req.path.parse_query("error").unwrap_or(false);
 
+        let agent = agent::Entity::find_by_id(agent_id).one(&state.db).await.unwrap();
 
+        if agent.is_none() {
+            return Err(Response::basic_error(Status::NotFound, "Agent not found"));
+        }
+        let agent: agent::Model = agent.unwrap();
 
-        Err(Response::basic_error(Status::NotFound, "Not found"))
+        let mut data = json!({
+            "id": agent.id,
+            "name": agent.name,
+            "language": agent.language,
+            "rating": agent.rating,
+            "games_played": agent.num_games,
+            "in_game": agent.in_game,
+            "removed": agent.removed
+        });
+
+        if send_error {
+            if let Some(error_file) = agent.error_file {
+                if Path::new(&error_file).exists().await {
+                    let error = async_std::fs::read(error_file).await.unwrap();
+                    let error = String::from_utf8(error).unwrap_or("Error file corrupted :(".to_string());
+
+                    data.as_object_mut().unwrap().insert("error".to_string(), Value::String(error));
+                }
+            }
+        }
+
+        let mut res = Response::new();
+        res.set_status(Status::Ok);
+        res.set_header("Content-Type", "application/json");
+        res.set_body(serde_json::to_string(&data).unwrap().into_bytes());
+
+        Ok(res)
     } else {
         Err(Response::basic_error(Status::NotFound, "Not found"))
     }
@@ -565,17 +532,22 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         }
     } else if req.matches_path_exact(&["api", "reset_password"]) {
         reset_password(&req, &state).await
-    } /*else if req.matches_path_exact(&["api", "add_agent"]) {
-        let mut profiles = state.profiles.lock().await;
-        let profile = find_profile(&req, &profiles)?;
-        let profile = &mut profiles[profile];
+    } else if req.matches_path_exact(&["api", "add_agent"]) {
+        let profile = get_user(&req, &state).await;
 
-        if !logged_in(profile, &req) {
+        if profile.is_none() {
+            return Err(Response::basic_error(Status::NotFound, "User id not found"));
+        }
+        let profile = profile.unwrap();
+
+        if !is_user_authenticated(&req, &profile) {
             return Err(Response::basic_error(Status::Unauthorized, "Unauthorized"));
         }
 
-        if profile.agents.len() >= profile.num_agents_allowed {
-            return Err(Response::basic_error(Status::Conflict, &format!("User already has {}/{} agents!", profile.agents.len(), profile.num_agents_allowed)));
+        let num_agents = get_num_agents(&profile, &state.db).await;
+
+        if num_agents >= profile.num_agents_allowed as _ {
+            return Err(Response::basic_error(Status::Conflict, &format!("User already has {}/{} agents!", num_agents, profile.num_agents_allowed)));
         }
 
         let data = decode_utf8(req.body.clone())?;
@@ -592,15 +564,10 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
             None => return Err(Response::basic_error(Status::BadRequest, &format!("Unknown language {}", language_id)))
         };
 
-        let id = state.executor.make_id();
-
-        let mut in_use = false;
-        for player in state.executor.scores.lock().await.values() {
-            if player.name.to_lowercase() == name.to_lowercase() {
-                in_use = true;
-                break;
-            }
-        }
+        let in_use = agent::Entity::find()
+            .filter(agent::Column::Name.eq(name))
+            .one(&state.db)
+            .await.unwrap().is_some();
 
         if in_use {
             return Err(Response::basic_error(Status::BadRequest, &format!("Agent name already used!")));
@@ -612,23 +579,22 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
             _ => {}
         }
 
-        let player = Player::new(id, name.to_string(), program, language.clone());
-
-        state.executor.add_player(player).await;
-
-        profile.agents.push(AgentInfo {
-            id
-        });
+        let id = state.executor.add_player(
+            name.to_string(), 
+            language_id.to_string(), 
+            program.dir_as_string(),
+            program.src.map(|x| x.to_str().unwrap().to_string())
+        ).await;
 
         let mut res = Response::new();
         res.set_status(Status::Ok);
         res.set_header("Content-Type", "application/json");
         res.set_body(serde_json::to_string(&json!({
-            "agent_id": id.get()
+            "agent_id": id
         })).unwrap().into_bytes());
 
         Ok(res)
-    }*/ else {
+    } else {
         Err(Response::basic_error(Status::NotFound, "Not found"))
     }
 }

@@ -5,7 +5,6 @@ import random
 import time
 
 def get_move(board: List[List[BoardCell]], piece: Piece) -> Pos:
-    
     moves = []
 
     for i in range(3):
