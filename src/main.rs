@@ -8,14 +8,14 @@ use std::{io::Write, path::Path, process::{Command, exit}, time::Duration, sync:
 
 use gamedef::parser::parse_game_interface;
 
-use crate::{isolate::{sandbox::LaunchOptionsBuilder}, langs::{python::Python, language::{Language, PreparedProgram}, javascript::make_js_deserializers}, games::{oxo::TicTacToe, Game}, util::pool::Pool, players::{auto_exec::GameRunner}};
+use crate::{isolate::{sandbox::LaunchOptionsBuilder}, langs::{python::Python, language::{Language, PreparedProgram}, javascript::make_js_deserializers}, games::{oxo::TicTacToe, Game}, util::{pool::Pool, RUN_DIR}, players::{auto_exec::GameRunner}, web::api};
 
 pub mod isolate;
 pub mod util;
 pub mod langs;
 pub mod games;
 pub mod players;
-//pub mod web;
+pub mod web;
 pub mod entities;
 
 make_server!("../res/games/test_game.game");
@@ -60,31 +60,35 @@ fn main() {
     info!("Clearing tmp/ directory");
     std::fs::remove_dir_all("./tmp").unwrap_or(());
 
+    if !Path::new(RUN_DIR).is_dir() {
+        std::fs::create_dir(RUN_DIR).unwrap();
+    }
+
     let lang = Arc::new(Python);
 
     let game: Box<dyn Game> = Box::new(TicTacToe);
 
     async_std::task::block_on(async {
         let db = Database::connect(DATABASE_URL).await.unwrap();
-        entities::prelude::Agent::delete_many().exec(&db).await.unwrap();
+        let db_copy = db.clone();
+        //entities::prelude::Agent::delete_many().exec(&db).await.unwrap();
 
         let runner = Arc::new(GameRunner::new(game, "tic_tac_toe", 10, db, vec![lang.clone()]).await);
 
         //Launch api on new thread
-        /*let runner_copy = runner.clone();
+        let runner_copy = runner.clone();
         let itf = runner.itf.clone();
         std::thread::spawn(move || {
             async_std::task::block_on(async {
                 let mut languages: Vec<Arc<dyn Language>> = vec![];
                 languages.push(Arc::new(Python));
 
-                api::launch_and_run_api(runner_copy, languages, itf).await.unwrap();
+                api::launch_and_run_api(runner_copy, languages, itf, db_copy).await.unwrap();
             });
-        });*/
+        });
 
-        for i in 0..10 {
+        /*for i in 0..10 {
             let mut program = PreparedProgram::new();
-            program.freeze();
 
             lang.prepare(
                 &read_file("./res/test/oxo.py"),
@@ -92,9 +96,9 @@ fn main() {
                 &runner.itf
             ).unwrap();
 
-            let id = runner.add_player(format!("Player {}", i), lang.id().to_string(), program.dir_as_string(), None).await;
+            let id = runner.add_player(format!("Player {}", i), lang.id().to_string(), program.dir_as_string(), program.src.map(|x| x.to_str().unwrap().to_string())).await;
             debug!("Added player with id {}", id);
-        }
+        }*/
 
         info!("Starting executor");
         runner.run().await;

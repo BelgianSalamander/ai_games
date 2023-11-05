@@ -5,15 +5,13 @@ use async_trait::async_trait;
 use gamedef::game_interface::{GameInterface, self};
 use rand::Rng;
 
-use crate::isolate::sandbox::{IsolateSandbox, RunningJob};
+use crate::{isolate::sandbox::{IsolateSandbox, RunningJob}, util::{temp_file::random_dir, RUN_DIR}};
 
 use super::files::ClientFiles;
 
 pub struct PreparedProgram {
     pub dir: PathBuf,
-    pub src: Option<PathBuf>,
-
-    frozen: bool
+    pub src: Option<PathBuf>
 }
 
 impl PreparedProgram {
@@ -44,37 +42,14 @@ impl PreparedProgram {
 
 impl PreparedProgram {
     pub fn new() -> Self {
-        let mut rng = rand::thread_rng();
-
-        let name_bytes: Vec<u8> = rng.sample_iter(&rand::distributions::Alphanumeric).take(20).collect();
-        let name = String::from_utf8_lossy(&name_bytes).to_string();
-
-        let dir = PathBuf::from(format!("./tmp/{}", name));
-
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = PathBuf::from(random_dir(RUN_DIR));
 
         Self {
             dir,
-            src: None,
-
-            frozen: false
+            src: None
         }
     }
-
-    pub fn freeze(&mut self) {
-        self.frozen = true;
-    }
 }
-
-impl Drop for PreparedProgram {
-    fn drop(&mut self) {
-        if self.frozen {
-            return;
-        }
-        std::fs::remove_dir_all(&self.dir).unwrap();
-    }
-}
-
 pub trait Language: Send + Sync {
     fn name(&self) -> &'static str;
     fn id(&self) -> &'static str;

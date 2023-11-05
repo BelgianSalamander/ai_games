@@ -1,8 +1,29 @@
 use std::fs::File;
 use std::rc::Rc;
+use async_std::path::Path;
 use log::{trace, warn};
 use rand::distributions::Alphanumeric;
 use rand::Rng;
+
+pub fn rand_str(len: usize) -> String {
+    let mut rng = rand::thread_rng();
+    let name_bytes: Vec<u8> = rng.sample_iter(&Alphanumeric).take(len).collect();
+    String::from_utf8_lossy(&name_bytes).to_string()
+}
+
+pub fn random_file(dir: &str, ext: &str) -> String {
+    let filename = format!("{}/{}{}", dir, rand_str(25), ext);
+
+    filename
+}
+
+pub fn random_dir(parent: &str) -> String {
+    let dir = format!("{}/{}", parent, rand_str(25));
+
+    std::fs::create_dir(&dir).unwrap();
+
+    dir
+}
 
 pub struct TempFile {
     pub path: String,

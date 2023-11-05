@@ -8,6 +8,7 @@ pub mod pool;
 pub mod asyncio;
 
 pub const DATABASE_URL: &str = "sqlite:./sqlite.db?mode=rwc";
+pub const RUN_DIR: &str = "./run";
 
 pub trait ActiveValueExtension<T> {
     fn get(&self) -> Option<&T>;

@@ -3,7 +3,7 @@ use std::{sync::{Arc, atomic::{AtomicUsize, Ordering}}, time::Duration, collecti
 use async_std::{sync::Mutex, fs::File};
 use gamedef::{game_interface::GameInterface, parser::parse_game_interface};
 use log::{debug, error, warn, info};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QueryOrder, sea_query::{Func, SimpleExpr}, QuerySelect, OrderedStatement, QueryTrait, ActiveValue, ActiveModelTrait};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QueryOrder, sea_query::{Func, SimpleExpr}, QuerySelect, OrderedStatement, QueryTrait, ActiveValue, ActiveModelTrait, Value};
 
 use crate::{
     games::Game, isolate::sandbox::IsolateSandbox, langs::{get_all_languages, language::Language}, util::{pool::Pool, temp_file::TempFile, ActiveValueExtension}, entities::{agent, self},
@@ -61,6 +61,12 @@ impl<T: Game + 'static> GameRunner<T> {
 
         let pool = Pool::new_async(num_sandboxes, |i| IsolateSandbox::new(i as _)).await;
         let pool = Arc::new(Mutex::new(pool));
+
+        //Set all agents to not in_game
+        Agent::update_many()
+            .col_expr(agent::Column::InGame, SimpleExpr::Value(Value::Bool(Some(false))))
+            .exec(&db)
+            .await.unwrap();
 
         Self {
             sandboxes: pool,

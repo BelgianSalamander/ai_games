@@ -12,12 +12,13 @@ use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 use gamedef::game_interface::GameInterface;
 use log::{info, debug};
 use rand::Rng;
+use sea_orm::{DatabaseConnection, EntityTrait};
 use serde_json::{json, Value};
 
 use crate::{
     games::Game,
-    players::{auto_exec::GameRunner, player::Player},
-    web::http::{Method, Request, Response, Status}, langs::language::{Language, PreparedProgram},
+    players::{auto_exec::GameRunner},
+    web::http::{Method, Request, Response, Status}, langs::language::{Language, PreparedProgram}, entities,
 };
 
 use super::{profile::{Profile, AgentInfo}, http::HttpError, web_errors::{HttpResult, decode_utf8, parse_json, ValueCast, parse_json_as_object, HttpErrorMap}};
@@ -37,20 +38,20 @@ pub struct AppState {
     profiles: Arc<Mutex<Vec<Profile>>>,
     super_secret_admin_password: String,
     languages: Arc<Vec<Arc<dyn Language>>>,
-    itf: GameInterface
+    itf: GameInterface,
+    db: DatabaseConnection
 }
 
 async fn get_all_players(state: AppState) -> String {
-    let lock = state.executor.scores.lock().await;
-
     let mut json = Vec::new();
 
-    for (id, data) in lock.iter() {
+    for agent in entities::prelude::Agent::find().all(&state.db).await.unwrap() {
         let val = json!({
-            "id": id.get(),
-            "name": data.name,
-            "rating": data.rating as i32,
-            "removed": data.removed
+            "id": agent.id,
+            "name": agent.name,
+            "rating": agent.rating as i32,
+            "removed": agent.removed,
+            "in_game": agent.in_game
         });
 
         json.push(val);
@@ -535,7 +536,7 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         }
     } else if req.matches_path_exact(&["api", "reset_password"]) {
         reset_password(&req, &state).await
-    } else if req.matches_path_exact(&["api", "add_agent"]) {
+    } /*else if req.matches_path_exact(&["api", "add_agent"]) {
         let mut profiles = state.profiles.lock().await;
         let profile = find_profile(&req, &profiles)?;
         let profile = &mut profiles[profile];
@@ -598,7 +599,7 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         })).unwrap().into_bytes());
 
         Ok(res)
-    } else {
+    }*/ else {
         Err(Response::basic_error(Status::NotFound, "Not found"))
     }
 }
@@ -655,7 +656,7 @@ fn generate_admin_password() -> String {
         .collect()
 }
 
-pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, languages: Vec<Arc<dyn Language>>, itf: GameInterface) -> std::io::Result<()> {
+pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, languages: Vec<Arc<dyn Language>>, itf: GameInterface, db: DatabaseConnection) -> std::io::Result<()> {
     let addr = SocketAddr::from(([0, 0, 0, 0], 42069));
 
     let listener = TcpListener::bind(addr).await.unwrap();
@@ -665,7 +666,8 @@ pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, langua
         profiles: Arc::new(Mutex::new(Vec::new())),
         super_secret_admin_password: generate_admin_password(),
         languages: Arc::new(languages),
-        itf
+        itf,
+        db
     };
 
     println!("Admin password: {}", state.super_secret_admin_password);
