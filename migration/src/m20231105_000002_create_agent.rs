@@ -1,5 +1,7 @@
 use sea_orm_migration::prelude::*;
 
+use crate::m20231105_000001_create_user::User;
+
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
@@ -28,6 +30,12 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Agent::ErrorFile).string())
                     .col(ColumnDef::new(Agent::SourceFile).string())
                     .col(ColumnDef::new(Agent::InGame).boolean().not_null().default(false))
+                    .col(ColumnDef::new(Agent::OwnerId).integer())
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(Agent::Table, Agent::OwnerId)
+                            .to(User::Table, User::Id)
+                    )
                     .to_owned(),
             )
             .await
@@ -41,7 +49,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(DeriveIden)]
-enum Agent {
+pub enum Agent {
     Table,
 
     Id,
@@ -57,5 +65,7 @@ enum Agent {
 
     Removed,
     ErrorFile,
-    SourceFile
+    SourceFile,
+
+    OwnerId
 }

@@ -3,3 +3,4 @@
 pub mod prelude;
 
 pub mod agent;
+pub mod user;

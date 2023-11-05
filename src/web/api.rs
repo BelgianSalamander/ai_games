@@ -12,16 +12,16 @@ use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 use gamedef::game_interface::GameInterface;
 use log::{info, debug};
 use rand::Rng;
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::{DatabaseConnection, EntityTrait, ModelTrait, ActiveValue, ActiveModelTrait, QueryFilter, ColumnTrait};
 use serde_json::{json, Value};
 
 use crate::{
     games::Game,
     players::{auto_exec::GameRunner},
-    web::http::{Method, Request, Response, Status}, langs::language::{Language, PreparedProgram}, entities,
+    web::http::{Method, Request, Response, Status}, langs::language::{Language, PreparedProgram}, entities::{self, user},
 };
 
-use super::{profile::{Profile, AgentInfo}, http::HttpError, web_errors::{HttpResult, decode_utf8, parse_json, ValueCast, parse_json_as_object, HttpErrorMap}};
+use super::{profile::{Profile, AgentInfo, generate_password}, http::HttpError, web_errors::{HttpResult, decode_utf8, parse_json, ValueCast, parse_json_as_object, HttpErrorMap}};
 
 trait IgnoreResult {
     fn ignore(self);
@@ -35,7 +35,6 @@ impl<T, E> IgnoreResult for Result<T, E> {
 #[derive(Clone)]
 pub struct AppState {
     executor: Arc<GameRunner<Box<dyn Game>>>,
-    profiles: Arc<Mutex<Vec<Profile>>>,
     super_secret_admin_password: String,
     languages: Arc<Vec<Arc<dyn Language>>>,
     itf: GameInterface,
@@ -61,11 +60,9 @@ async fn get_all_players(state: AppState) -> String {
 }
 
 async fn get_all_profiles(state: AppState) -> String {
-    let lock = state.profiles.lock().await;
-
     let mut json = Vec::new();
 
-    for profile in lock.iter() {
+    for profile in entities::prelude::User::find().all(&state.db).await.unwrap() {
         let val = json!({
             "id": profile.id,
             "username": profile.username,
@@ -163,40 +160,10 @@ fn authenticate_admin(req: &Request, state: &AppState) -> bool {
     false
 }
 
-async fn get_user(req: &Request, state: &AppState, admin_only: bool) -> (bool, Option<u32>) {
-    let id = match req.path.query.get("id") {
-        Some(id) => {
-            match id.parse::<u32>() {
-                Ok(id) => Some(id),
-                Err(e) => None
-            }
-        }
-        None => None
-    };
-
-    if authenticate_admin(req, state) {
-        return (true, id);
-    } else if admin_only {
-        return (false, None)
-    }
-
-    if id == None {
-        return (false, None);
-    }
-
-    let lock = state.profiles.lock().await;
-
-    let profile = lock.iter().find(|p| p.id == id.unwrap());
-
-    if profile.is_none() {
-        return (false, None);
-    }
-
-    let profile = profile.unwrap();
-
+fn is_user_authenticated(req: &Request, profile: &entities::user::Model) -> bool {
     let user_id = match req.cookies.get("id") {
         Some(id) => {
-            match id.parse::<u32>() {
+            match id.parse::<i32>() {
                 Ok(id) => Some(id),
                 Err(e) => None
             }
@@ -207,25 +174,39 @@ async fn get_user(req: &Request, state: &AppState, admin_only: bool) -> (bool, O
     let user_password = req.cookies.get("password");
 
     if user_id == None || user_password == None {
-        return (false, id);
+        return false;
     }
 
-    let user_id = user_id.unwrap();
-    let user_password = user_password.unwrap();
-
-    if user_id != profile.id {
-        return (false, id);
+    if profile.id != user_id.unwrap() || profile.password != *user_password.unwrap() {
+        return false;
     }
 
-    if profile.password != *user_password {
-        return (false, id);
+    true
+}
+
+async fn get_user(req: &Request, state: &AppState) -> Option<entities::user::Model> {
+    let id = match req.path.query.get("id") {
+        Some(id) => {
+            match id.parse::<i32>() {
+                Ok(id) => Some(id),
+                Err(e) => None
+            }
+        }
+        None => None
+    };
+
+    if id == None {
+        return None;
     }
 
-    (true, id)
+    let id = id.unwrap();
+    let user = entities::prelude::User::find_by_id(id).one(&state.db).await.unwrap();
+
+    user
 }
 
 // If the profile was not found, an error message is sent
-fn find_profile<'a>(req: &Request, profiles: &'a Vec<Profile>) -> HttpResult<usize> {
+/*fn find_profile<'a>(req: &Request, profiles: &'a Vec<Profile>) -> HttpResult<usize> {
     let id = match req.path.query.get("id") {
         Some(id) => {
             match id.parse::<u32>() {
@@ -253,9 +234,9 @@ fn find_profile<'a>(req: &Request, profiles: &'a Vec<Profile>) -> HttpResult<usi
     }
 
     return Err(Response::basic_error(Status::NotFound, "Profile not found"));
-}
+}*/
 
-fn find_logged_in_profile(req: &Request, profiles: &Vec<Profile>) -> HttpResult<usize> {
+/*fn find_logged_in_profile(req: &Request, profiles: &Vec<Profile>) -> HttpResult<usize> {
     let id = match req.cookies.get("id") {
         Some(id) => {
             match id.parse::<u32>() {
@@ -286,12 +267,12 @@ fn find_logged_in_profile(req: &Request, profiles: &Vec<Profile>) -> HttpResult<
     }
 
     Err(Response::basic_error(Status::Forbidden, "Not logged in!"))
-}
+}*/
 
-fn logged_in(profile: &Profile, req: &Request) -> bool {
-    let user_id = match req.cookies.get("id") {
+async fn get_profile_data(req: &Request, state: &AppState) -> HttpResult<Response> {
+    let id = match req.path.query.get("id") {
         Some(id) => {
-            match id.parse::<u32>() {
+            match id.parse::<i32>() {
                 Ok(id) => Some(id),
                 Err(e) => None
             }
@@ -299,32 +280,30 @@ fn logged_in(profile: &Profile, req: &Request) -> bool {
         None => None
     };
 
-    let user_password = req.cookies.get("password");
+    let username = req.path.query.get("username");
 
-    if user_id == None || user_password == None {
-        return false;
+    if username.is_none() && id.is_none() {
+        return Err(Response::basic_error(Status::NotFound, "Could not find desired user (Missing parameters)"));
     }
 
-    let user_id = user_id.unwrap();
-    let user_password = user_password.unwrap();
+    let mut query = user::Entity::find();
 
-    if user_id != profile.id {
-        return false;
+    if let Some(id) = id {
+        query = query.filter(user::Column::Id.eq(id));
     }
 
-    if profile.password != *user_password {
-        return false;
+    if let Some(username) = username {
+        query = query.filter(user::Column::Username.eq(username));
     }
 
-    true
-}
+    let profile = query.one(&state.db).await.unwrap();
 
-async fn get_profile(req: &Request, state: &AppState) -> HttpResult<Response> {
-    let profiles = state.profiles.lock().await;
-    let idx = find_profile(&req, &profiles)?;
-    let profile = &profiles[idx];
+    if profile.is_none() {
+        return Err(Response::basic_error(Status::NotFound, "Could not find desired user"));
+    }
+    let profile = profile.unwrap();
 
-    let logged = logged_in(profile, req);
+    let logged = is_user_authenticated(req, &profile);
     let authenticated = authenticate_admin(req, state) || logged;
 
     let mut data = HashMap::new();
@@ -338,9 +317,14 @@ async fn get_profile(req: &Request, state: &AppState) -> HttpResult<Response> {
         data.insert("max_agents", json!(profile.num_agents_allowed));
 
         let mut agents = Vec::new();
+
+        let related = profile.find_related(entities::prelude::Agent).all(&state.db).await.unwrap();
         
-        for agent in profile.agents.iter() {
-            agents.push(json!({}));
+        for agent in related {
+            agents.push(json!({
+                "id": agent.id,
+                "rating": agent.rating
+            }));
         }
 
         data.insert("agents", json!(agents));
@@ -391,7 +375,7 @@ async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResul
 
         Ok(res)
     } else if req.matches_path_exact(&["api", "profile"]) {
-        get_profile(&req, &state).await
+        get_profile_data(&req, &state).await
     } else if req.matches_path_exact(&["api", "game"]) {
         let mut res = Response::new();
         res.set_status(Status::Ok);
@@ -403,9 +387,39 @@ async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResul
 
         Ok(res)
     } else if req.matches_path_exact(&["api", "auth"]) {
-        let profiles = state.profiles.lock().await;
-        let idx = find_profile(&req, &profiles)?;
-        let profile = &profiles[idx];
+        //TODO: Extract this profile finding logic into a function
+        let id = match req.path.query.get("id") {
+            Some(id) => {
+                match id.parse::<i32>() {
+                    Ok(id) => Some(id),
+                    Err(e) => None
+                }
+            }
+            None => None
+        };
+    
+        let username = req.path.query.get("username");
+    
+        if username.is_none() && id.is_none() {
+            return Err(Response::basic_error(Status::NotFound, "Could not find desired user (Missing parameters)"));
+        }
+    
+        let mut query = user::Entity::find();
+    
+        if let Some(id) = id {
+            query = query.filter(user::Column::Id.eq(id));
+        }
+    
+        if let Some(username) = username {
+            query = query.filter(user::Column::Username.eq(username));
+        }
+    
+        let profile = query.one(&state.db).await.unwrap();
+
+        if profile.is_none() {
+            return Err(Response::basic_error(Status::NotFound, "Couldn't find user matching id"));
+        }
+        let profile = profile.unwrap();
 
         let password = req.path.get("password")?;
         let mut res = Response::new();
@@ -439,9 +453,7 @@ async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResul
     } else if req.matches_path_exact(&["api", "agent"]) {
         let agent_id = req.path.get("agent")?;
         
-        let profiles = state.profiles.lock().await;
-        let profile = find_logged_in_profile(&req, &profiles)?;
-        let profile = &profiles[profile];
+        //TODO
 
 
 
@@ -465,22 +477,22 @@ fn make_user(profiles: &mut Vec<Profile>, username: &String, num_agents: usize) 
 }
 
 async fn reset_password(req: &Request, state: &AppState) -> HttpResult<Response> {
-    let (authenticated, id) = get_user(req, state, false).await;
+    let user = get_user(req, state).await;
 
-    if id == None {
-        return Err(Response::basic_error(Status::BadRequest, "Invalid id"));
+    if user.is_none() {
+        return Err(Response::basic_error(Status::NotFound, "Invalid id"));
     }
 
-    let id = id.unwrap();
-    let mut lock = state.profiles.lock().await;
-    let profile = lock.iter_mut().find(|p| p.id == id).unwrap();
+    let user = user.unwrap();
 
-    profile.regenerate_password();
+    let mut active: entities::user::ActiveModel = user.into();
+    active.password = ActiveValue::Set(generate_password());
+    let user = active.update(&state.db).await.unwrap();
 
     let mut res = Response::new();
     res.set_status(Status::Ok);
     res.set_header("Content-Type", "text/plain");
-    res.set_body(profile.password.clone().into_bytes());
+    res.set_body(user.password.clone().into_bytes());
 
     Ok(res)
 }
@@ -490,47 +502,64 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         if !authenticate_admin(&req, &state) {
             Err(Response::basic_error(Status::Unauthorized, "Unauthorized"))
         }else if req.matches_path_exact(&["admin", "new_profile"]) {
-            let mut profiles = state.profiles.lock().await;
             let username = req.path.get("username")?;
 
+            let other = entities::prelude::User::find()
+                .filter(user::Column::Username.eq(username))
+                .one(&state.db)
+                .await
+                .unwrap();
+
             //Check if username is already taken
-            if profiles.iter().any(|p| p.username == *username) {
+            if other.is_some() {
                 return Err(Response::basic_error(Status::BadRequest, "Username already taken"));
             }
 
             let num_agents_allowed = req.path.parse_query("agents")?;
 
-            make_user(&mut profiles, username, num_agents_allowed);
+            let profile = user::ActiveModel {
+                username: ActiveValue::Set(username.clone()),
+                password: ActiveValue::Set(generate_password()),
+                num_agents_allowed: ActiveValue::Set(num_agents_allowed),
+                ..Default::default()
+            };
+
+            user::Entity::insert(profile).exec(&state.db).await.unwrap();
 
             let mut res = Response::new();
             res.set_status(Status::Ok);
 
             Ok(res)
         } else if req.matches_path_exact(&["admin", "delete_profile"]) {
-            let mut profiles = state.profiles.lock().await;
-            let target_idx = find_profile(&req, &profiles)?;
+            let profile = get_user(&req, &state).await;
+            if let Some(profile) = profile {
+                info!("Deleting profile: id: {:?}, username: {:?}", profile.id, profile.username);
 
-            let profile = &profiles[target_idx];
-            info!("Deleting profile: id: {:?}, username: {:?}", profile.id, profile.username);
+                let profile: user::ActiveModel = profile.into();
+                user::Entity::delete(profile).exec(&state.db).await.unwrap();
 
-            profiles.swap_remove(target_idx);
-
-            let mut res = Response::new();
-            res.set_status(Status::Ok);
-                
-            Ok(res)
+                let mut res = Response::new();
+                res.set_status(Status::Ok);
+                    
+                Ok(res)
+            } else {
+                Err(Response::basic_error(Status::NotFound, "User id not found"))
+            }
         } else if req.matches_path_exact(&["admin", "set_profile_agents"]) {
+            let profile = get_user(&req, &state).await;
             let num_agents_allowed = req.path.parse_query("agents")?;
+            if let Some(profile) = profile {
+                let mut profile: user::ActiveModel = profile.into();
+                profile.num_agents_allowed = ActiveValue::Set(num_agents_allowed);
+                profile.update(&state.db).await.unwrap();
 
-            let mut lock = state.profiles.lock().await;
-            let target_idx = find_profile(&req, &lock)?;
-            
-            lock[target_idx].num_agents_allowed = num_agents_allowed;
-
-            let mut res = Response::new();
-            res.set_status(Status::Ok);
-
-            Ok(res)
+                let mut res = Response::new();
+                res.set_status(Status::Ok);
+                    
+                Ok(res)
+            } else {
+                Err(Response::basic_error(Status::NotFound, "User id not found"))
+            }
         } else {
             Err(Response::basic_error(Status::NotFound, "Not found"))
         }
@@ -638,8 +667,6 @@ async fn handle_conn(mut stream: TcpStream, addr: SocketAddr, state: AppState) {
 }
 
 fn generate_admin_password() -> String {
-    use rand::Rng;
-
     let mut rng = rand::thread_rng();
 
     //rand::distributions::Alphanumeric
@@ -663,7 +690,6 @@ pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, langua
 
     let state = AppState {
         executor,
-        profiles: Arc::new(Mutex::new(Vec::new())),
         super_secret_admin_password: generate_admin_password(),
         languages: Arc::new(languages),
         itf,

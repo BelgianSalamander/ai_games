@@ -26,6 +26,7 @@ function verifyPassword() {
             element.innerText = 'Password is correct';
             document.getElementById('hidden-controls').style.display = 'block';
             authed = true;
+            updateProfileList(true);
         } else {
             element.style.color = 'red';
             element.innerText = 'Password is incorrect';
@@ -94,10 +95,10 @@ function generateProfileTable(data) {
         agents.value = profile.num_agents_allowed;
         agents.onchange = e => {
             console.log(e.target.value);
-            fetch(`/admin/set_profile_agents?username=${profile.username}&agents=${e.target.value}`, {
+            fetch(`/admin/set_profile_agents?id=${profile.id}&agents=${e.target.value}`, {
                 method: 'POST'
             });
-            updateProfileList();
+            updateProfileList(false);
         };
         row.appendChild(agents);
 
@@ -105,12 +106,12 @@ function generateProfileTable(data) {
         const delButton = document.createElement('button');
         delButton.innerText = 'Delete';
         delButton.onclick = () => {
-            fetch(`/admin/delete_profile?username=${profile.username}`, {
+            fetch(`/admin/delete_profile?id=${profile.id}`, {
                 method: 'POST'
             }).then(response => {
                 if (response.status === 200) {
                     console.log('Profile deleted!');
-                    updateProfileList();
+                    updateProfileList(false);
                 } else {
                     console.log('Profile deletion failed!');
                     console.log(response);
@@ -124,7 +125,6 @@ function generateProfileTable(data) {
         resetButton.innerText = 'Reset Password';
         resetButton.onclick = () => {
             resetPassword(profile.id);
-            updateProfileList();
         };
         controls.appendChild(resetButton);
         row.appendChild(controls);
@@ -135,7 +135,7 @@ function generateProfileTable(data) {
 
 var prevData = [];
 
-function updateProfileList() {
+function updateProfileList(force) {
     if (!authed) return;
     fetch('/admin/profiles').then(response => {
         if (response.status === 200) {
@@ -144,7 +144,7 @@ function updateProfileList() {
             verifyPassword();
         }
     }).then(data => {
-        if (!areObjectsEqual(data, prevData)) {
+        if (force || !areObjectsEqual(data, prevData)) {
             generateProfileTable(data);
             prevData = data;
         }
@@ -205,5 +205,7 @@ function resetPassword(id) {
 
             document.cookie = `password=${text};expires=${date.toUTCString()};path=/;SameSite=Strict`;
         }
+
+        updateProfileList();
     });
 }
