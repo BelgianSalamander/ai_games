@@ -570,7 +570,7 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         let num_agents = get_num_agents(&profile, &state.db).await;
 
         if num_agents >= profile.num_agents_allowed as _ {
-            return Err(Response::basic_error(Status::Conflict, &format!("User already has {}/{} agents!", num_agents, profile.num_agents_allowed)));
+            return Err(Response::basic_error(Status::Conflict, &format!("You have already used {} out of your {} available agent slot(s)! You can delete some of your agents to free these up!", num_agents, profile.num_agents_allowed)));
         }
 
         let data = decode_utf8(req.body.clone())?;
