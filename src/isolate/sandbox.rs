@@ -9,7 +9,7 @@ use std::fs::File;
 use async_std::process::{Child, Command, Output, Stdio, ChildStdout, ChildStdin};
 use std::sync::{Arc, Mutex};
 use log::{debug, info, trace, warn};
-use crate::util::temp_file::{SharedTempFile, TempFile};
+use crate::util::temp_file::TempFile;
 
 pub struct IsolateSandbox {
     box_id: u32,
@@ -272,7 +272,7 @@ macro_rules! read_impl {
 }
 
 impl RunningJob {
-    pub fn new(mut child: Child, mut stderr: TempFile, metafile: TempFile, on_exit: Option<Box<dyn FnOnce(&mut RunningJob) + Sync + Send>>) -> RunningJob {
+    pub fn new(mut child: Child, stderr: TempFile, metafile: TempFile, on_exit: Option<Box<dyn FnOnce(&mut RunningJob) + Sync + Send>>) -> RunningJob {
         let stdin = Arc::new(Mutex::new(child.stdin.take().unwrap()));
         let stdout = Arc::new(Mutex::new(child.stdout.take().unwrap()));
 

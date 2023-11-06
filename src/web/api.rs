@@ -205,6 +205,31 @@ async fn get_user(req: &Request, state: &AppState) -> Option<entities::user::Mod
     user
 }
 
+async fn get_agent_data_as_json(agent: &agent::Model, include_error: bool) -> serde_json::Value {
+    let mut data = json!({
+        "id": agent.id,
+        "name": agent.name,
+        "language": agent.language,
+        "rating": agent.rating,
+        "games_played": agent.num_games,
+        "in_game": agent.in_game,
+        "removed": agent.removed
+    });
+
+    if include_error {
+        if let Some(error_file) = &agent.error_file {
+            if Path::new(&error_file).exists().await {
+                let error = async_std::fs::read(error_file).await.unwrap();
+                let error = String::from_utf8(error).unwrap_or("Error file corrupted :(".to_string());
+
+                data.as_object_mut().unwrap().insert("error".to_string(), Value::String(error));
+            }
+        }
+    }
+
+    data
+}
+
 async fn get_profile_data(req: &Request, state: &AppState) -> HttpResult<Response> {
     let id = match req.path.query.get("id") {
         Some(id) => {
@@ -257,10 +282,7 @@ async fn get_profile_data(req: &Request, state: &AppState) -> HttpResult<Respons
         let related = profile.find_related(entities::prelude::Agent).all(&state.db).await.unwrap();
         
         for agent in related {
-            agents.push(json!({
-                "id": agent.id,
-                "rating": agent.rating
-            }));
+            agents.push(get_agent_data_as_json(&agent, false).await);
         }
 
         data.insert("agents", json!(agents));
@@ -398,26 +420,7 @@ async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResul
         }
         let agent: agent::Model = agent.unwrap();
 
-        let mut data = json!({
-            "id": agent.id,
-            "name": agent.name,
-            "language": agent.language,
-            "rating": agent.rating,
-            "games_played": agent.num_games,
-            "in_game": agent.in_game,
-            "removed": agent.removed
-        });
-
-        if send_error {
-            if let Some(error_file) = agent.error_file {
-                if Path::new(&error_file).exists().await {
-                    let error = async_std::fs::read(error_file).await.unwrap();
-                    let error = String::from_utf8(error).unwrap_or("Error file corrupted :(".to_string());
-
-                    data.as_object_mut().unwrap().insert("error".to_string(), Value::String(error));
-                }
-            }
-        }
+        let mut data = get_agent_data_as_json(&agent, send_error).await;
 
         let mut res = Response::new();
         res.set_status(Status::Ok);

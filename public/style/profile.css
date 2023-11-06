@@ -1,0 +1,12 @@
+.agent {
+    background-color: #454b45;
+    width: 500px;
+    padding: 5px;
+
+    margin-bottom: 20px;
+}
+
+.agent h3 {
+    margin-top: 0px;
+    margin-bottom: 0px;
+}
