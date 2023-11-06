@@ -583,7 +583,8 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
             name.to_string(), 
             language_id.to_string(), 
             program.dir_as_string(),
-            program.src.map(|x| x.to_str().unwrap().to_string())
+            program.src.map(|x| x.to_str().unwrap().to_string()),
+            Some(profile.id)
         ).await;
 
         let mut res = Response::new();

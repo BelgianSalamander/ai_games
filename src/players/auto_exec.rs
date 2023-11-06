@@ -78,12 +78,13 @@ impl<T: Game + 'static> GameRunner<T> {
         }
     }
 
-    pub async fn add_player(&self, name: String, language: String, directory: String, source_file: Option<String>) -> i32 {
+    pub async fn add_player(&self, name: String, language: String, directory: String, source_file: Option<String>, owner_id: Option<i32>) -> i32 {
         let agent = agent::ActiveModel {
             name: ActiveValue::Set(name),
             language: ActiveValue::Set(language),
             directory: ActiveValue::Set(directory),
             source_file: ActiveValue::Set(source_file),
+            owner_id: ActiveValue::Set(owner_id),
             ..Default::default()
         };
         let res = Agent::insert(agent).exec(&self.db).await.unwrap();
