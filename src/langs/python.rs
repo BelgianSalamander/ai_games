@@ -1,20 +1,10 @@
-use gamedef::game_interface::{GameInterface, self, EnumVariants, BuiltinType, Type, get_enum_variant_type};
+use gamedef::game_interface::{GameInterface, self, EnumVariants, BuiltinType, Type, get_enum_variant_type, is_basic_enum};
 
 use crate::isolate::sandbox::{RunningJob, LaunchOptionsBuilder};
 
 use super::{language::{Language, PreparedProgram}, files::ClientFiles};
 
 pub struct Python;
-
-fn is_basic_enum(variants: &EnumVariants) -> bool {
-    for variant in variants {
-        if variant.types.len() != 0 {
-            return false;
-        }
-    }
-
-    true
-}
 
 pub fn type_as_inline_python(ty: &Type) -> String {
     match ty {
@@ -62,7 +52,7 @@ fn write_inline_decoder(ty: &Type) -> String {
             let inner = write_inline_decoder(ty);
 
             format!("[{} for _ in range({})]", inner, len)
-        }
+        },
         Type::DynamicArray(ty) => {
             let inner = write_inline_decoder(ty);
 

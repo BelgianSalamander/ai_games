@@ -41,6 +41,16 @@ pub fn get_enum_variant_type(variants: &EnumVariants) -> BuiltinType {
     }
 }
 
+pub fn is_basic_enum(variants: &EnumVariants) -> bool {
+    for variant in variants {
+        if variant.types.len() != 0 {
+            return false;
+        }
+    }
+
+    true
+}
+
 #[derive(Debug, Clone)]
 pub enum Type {
     Builtin(BuiltinType),

@@ -8,7 +8,7 @@ use std::{io::Write, path::Path, process::{Command, exit}, time::Duration, sync:
 
 use gamedef::parser::parse_game_interface;
 
-use crate::{isolate::{sandbox::LaunchOptionsBuilder}, langs::{python::Python, language::{Language, PreparedProgram}, javascript::make_js_deserializers}, games::{oxo::TicTacToe, Game}, util::{pool::Pool, RUN_DIR}, players::{auto_exec::GameRunner}, web::api};
+use crate::{isolate::{sandbox::LaunchOptionsBuilder}, langs::{python::Python, language::{Language, PreparedProgram}, javascript::make_js_deserializers, cpp::CppLang}, games::{oxo::TicTacToe, Game}, util::{pool::Pool, RUN_DIR}, players::{auto_exec::GameRunner}, web::api};
 
 pub mod isolate;
 pub mod util;
@@ -63,6 +63,11 @@ fn main() {
     if !Path::new(RUN_DIR).is_dir() {
         std::fs::create_dir(RUN_DIR).unwrap();
     }
+
+    let itf_path = format!("res/games/{}.game", "snake");
+    let itf = std::fs::read_to_string(itf_path).unwrap();
+    let itf = parse_game_interface(&itf, "snake".to_string()).unwrap();
+    CppLang.prepare_files(&itf);
 
     let lang = Arc::new(Python);
 
