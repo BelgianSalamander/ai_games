@@ -6,7 +6,7 @@ use log::{debug, error, warn, info};
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QueryOrder, sea_query::{Func, SimpleExpr}, QuerySelect, OrderedStatement, QueryTrait, ActiveValue, ActiveModelTrait, Value};
 
 use crate::{
-    games::Game, isolate::sandbox::IsolateSandbox, langs::{get_all_languages, language::Language}, util::{pool::Pool, temp_file::TempFile, ActiveValueExtension}, entities::{agent, self},
+    games::Game, isolate::sandbox::IsolateSandbox, langs::{get_all_languages, language::Language}, util::{pool::Pool, temp_file::{TempFile, random_file}, ActiveValueExtension, RUN_DIR}, entities::{agent, self},
 };
 
 use crate::entities::prelude::*;
@@ -159,11 +159,10 @@ impl<T: Game + 'static> GameRunner<T> {
                         let displayed_error = format!("Error: {}\nStderr:\n{}", err, stderr_contents);
 
                         //TODO: Don't use a temp file cause it shoudl persist (this goes for a lot of other things as well). Current workaround is to freeze
-                        let mut stderr_store = TempFile::new();
-                        stderr_store.freeze();
-                        stderr_store.write_string_async(&displayed_error).await;
+                        let stderr_store = random_file(RUN_DIR, ".error");
+                        async_std::fs::write(stderr_store.clone(), displayed_error.clone()).await.unwrap();
 
-                        players[i].error_file = ActiveValue::Set(Some(stderr_store.path.clone()));
+                        players[i].error_file = ActiveValue::Set(Some(stderr_store.clone()));
                         players[i].removed = ActiveValue::Set(true);
 
                         warn!("Player {} removed.\n{}", players[i].name.get().unwrap(), displayed_error);

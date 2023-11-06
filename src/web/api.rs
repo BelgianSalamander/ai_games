@@ -13,7 +13,7 @@ use gamedef::game_interface::GameInterface;
 use log::{info, debug};
 use rand::Rng;
 use sea_orm::{DatabaseConnection, EntityTrait, ModelTrait, ActiveValue, ActiveModelTrait, QueryFilter, ColumnTrait};
-use serde_json::{json, Value};
+use serde_json::{json, Value, Number};
 
 use crate::{
     games::Game,
@@ -205,7 +205,7 @@ async fn get_user(req: &Request, state: &AppState) -> Option<entities::user::Mod
     user
 }
 
-async fn get_agent_data_as_json(agent: &agent::Model, include_error: bool) -> serde_json::Value {
+async fn get_agent_data_as_json(agent: &agent::Model, include_error: bool, db: &DatabaseConnection) -> serde_json::Value {
     let mut data = json!({
         "id": agent.id,
         "name": agent.name,
@@ -224,6 +224,13 @@ async fn get_agent_data_as_json(agent: &agent::Model, include_error: bool) -> se
 
                 data.as_object_mut().unwrap().insert("error".to_string(), Value::String(error));
             }
+        }
+    }
+
+    if let Some(owner_id) = agent.owner_id {
+        if let Some(owner) = user::Entity::find_by_id(owner_id).one(db).await.unwrap() {
+            data.as_object_mut().unwrap().insert("owner_id".to_string(), json!(owner_id));
+            data.as_object_mut().unwrap().insert("owner".to_string(), json!(owner.username));
         }
     }
 
@@ -282,7 +289,7 @@ async fn get_profile_data(req: &Request, state: &AppState) -> HttpResult<Respons
         let related = profile.find_related(entities::prelude::Agent).all(&state.db).await.unwrap();
         
         for agent in related {
-            agents.push(get_agent_data_as_json(&agent, false).await);
+            agents.push(get_agent_data_as_json(&agent, false, &state.db).await);
         }
 
         data.insert("agents", json!(agents));
@@ -411,7 +418,7 @@ async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResul
     } else if req.matches_path_exact(&["api", "agent"]) {
         info!("Querying agent!");
         let agent_id: i32 = req.path.parse_query("agent")?;
-        let send_error: bool = req.path.parse_query("error").unwrap_or(false);
+        let mut send_error: bool = req.path.parse_query("error").unwrap_or(false);
 
         let agent = agent::Entity::find_by_id(agent_id).one(&state.db).await.unwrap();
 
@@ -420,7 +427,15 @@ async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResul
         }
         let agent: agent::Model = agent.unwrap();
 
-        let mut data = get_agent_data_as_json(&agent, send_error).await;
+        if let Some(owner_id) = agent.owner_id {
+            if let Some(owner) = user::Entity::find_by_id(owner_id).one(&state.db).await.unwrap() {
+                if !is_user_authenticated(&req, &owner) {
+                    send_error = false;
+                }
+            }
+        }
+
+        let data = get_agent_data_as_json(&agent, send_error, &state.db).await;
 
         let mut res = Response::new();
         res.set_status(Status::Ok);
@@ -504,6 +519,11 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
             let profile = get_user(&req, &state).await;
             if let Some(profile) = profile {
                 info!("Deleting profile: id: {:?}, username: {:?}", profile.id, profile.username);
+
+                agent::Entity::delete_many()
+                    .filter(agent::Column::OwnerId.eq(profile.id))
+                    .exec(&state.db)
+                    .await.unwrap();
 
                 let profile: user::ActiveModel = profile.into();
                 user::Entity::delete(profile).exec(&state.db).await.unwrap();

@@ -27,8 +27,21 @@ function submit() {
         "name": name
     };
 
+    let feedback = document.getElementById("feedback");
+    feedback.innerText = "";
+
     fetch(`/api/add_agent?id=${getCookie("id")}`, {
         "method": "POST",
         "body": JSON.stringify(body)
-    }).then(d => d.json()).then(data => console.log(data));
+    }).then(d => {
+        if (d.status == 200) {
+            d.json().then(data => {
+
+            })
+        } else {
+            d.text().then(error => {
+                feedback.innerText = error;
+            })
+        }
+    });
 }
