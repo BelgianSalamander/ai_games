@@ -8,7 +8,7 @@ use std::{io::Write, path::Path, process::{Command, exit}, time::Duration, sync:
 
 use gamedef::parser::parse_game_interface;
 
-use crate::{isolate::{sandbox::LaunchOptionsBuilder}, langs::{python::Python, language::{Language, PreparedProgram}, javascript::make_js_deserializers, cpp::CppLang}, games::{oxo::TicTacToe, Game}, util::{pool::Pool, RUN_DIR}, players::{auto_exec::GameRunner}, web::api};
+use crate::{isolate::{sandbox::LaunchOptionsBuilder}, langs::{python::Python, language::{Language, PreparedProgram}, javascript::make_js_deserializers, cpp::CppLang}, games::{oxo::TicTacToe, Game}, util::{RUN_DIR}, players::{auto_exec::GameRunner}, web::api};
 
 pub mod isolate;
 pub mod util;
@@ -78,17 +78,14 @@ fn main() {
         let db_copy = db.clone();
         //entities::prelude::Agent::delete_many().exec(&db).await.unwrap();
 
-        let runner = Arc::new(GameRunner::new(game, "tic_tac_toe", 10, db, vec![lang.clone()]).await);
+        let runner = Arc::new(GameRunner::new(game, "tic_tac_toe", 10, db).await);
 
         //Launch api on new thread
         let runner_copy = runner.clone();
         let itf = runner.itf.clone();
         std::thread::spawn(move || {
             async_std::task::block_on(async {
-                let mut languages: Vec<Arc<dyn Language>> = vec![];
-                languages.push(Arc::new(Python));
-
-                api::launch_and_run_api(runner_copy, languages, itf, db_copy).await.unwrap();
+                api::launch_and_run_api(runner_copy, itf, db_copy).await.unwrap();
             });
         });
 

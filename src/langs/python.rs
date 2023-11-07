@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use gamedef::game_interface::{GameInterface, self, EnumVariants, BuiltinType, Type, get_enum_variant_type, is_basic_enum};
 
 use crate::isolate::sandbox::{RunningJob, LaunchOptionsBuilder};
@@ -103,6 +104,7 @@ fn write_encoder(ty: &Type, value: &str, indent: u32) -> String {
     }
 }
 
+#[async_trait]
 impl Language for Python {
     fn name(&self) -> &'static str {
         "Python 3"
@@ -428,7 +430,7 @@ impl Language for Python {
         res
     }
 
-    fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface) -> Result<(), String> {
+    async fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface) -> Result<(), String> {
         out.add_src_file("game.py", src);
 
         Ok(())

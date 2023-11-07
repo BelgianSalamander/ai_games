@@ -50,6 +50,8 @@ impl PreparedProgram {
         }
     }
 }
+
+#[async_trait]
 pub trait Language: Send + Sync {
     fn name(&self) -> &'static str;
     fn id(&self) -> &'static str;
@@ -58,7 +60,7 @@ pub trait Language: Send + Sync {
     fn generate(&self, game_interface: &GameInterface) -> ClientFiles;
 
     //TODO: Make prepare async to allow for compiled languages to work
-    fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface) -> Result<(), String>;
+    async fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface) -> Result<(), String>;
 
     fn launch(&self, data_dir: &str, sandbox: &IsolateSandbox, itf: &GameInterface) -> RunningJob;
 

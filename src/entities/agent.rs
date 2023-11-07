@@ -20,6 +20,7 @@ pub struct Model {
     pub source_file: Option<String>,
     pub in_game: bool,
     pub owner_id: Option<i32>,
+    pub partial: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

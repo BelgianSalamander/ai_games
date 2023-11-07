@@ -18,7 +18,7 @@ use serde_json::{json, Value, Number};
 use crate::{
     games::Game,
     players::{auto_exec::GameRunner},
-    web::http::{Method, Request, Response, Status}, langs::language::{Language, PreparedProgram}, entities::{self, user, agent},
+    web::http::{Method, Request, Response, Status}, langs::{language::{Language, PreparedProgram}, get_all_languages}, entities::{self, user, agent}, util::{temp_file::random_file, RUN_DIR},
 };
 
 use super::{profile::{Profile, AgentInfo, generate_password, get_num_agents}, http::HttpError, web_errors::{HttpResult, decode_utf8, parse_json, ValueCast, parse_json_as_object, HttpErrorMap}};
@@ -213,7 +213,8 @@ async fn get_agent_data_as_json(agent: &agent::Model, include_error: bool, db: &
         "rating": agent.rating,
         "games_played": agent.num_games,
         "in_game": agent.in_game,
-        "removed": agent.removed
+        "removed": agent.removed,
+        "partial": agent.partial
     });
 
     if include_error {
@@ -577,7 +578,7 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
 
         let data = parse_json_as_object(&data)?;
 
-        let src = data.try_get("src")?.try_as_str()?;
+        let src = data.try_get("src")?.try_as_str()?.to_string();
         let language_id = data.try_get("lang")?.try_as_str()?;
         let name = data.try_get("name")?.try_as_str()?;
 
@@ -585,7 +586,7 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         let language = match language {
             Some(l) => l,
             None => return Err(Response::basic_error(Status::BadRequest, &format!("Unknown language {}", language_id)))
-        };
+        }.clone();
 
         let in_use = agent::Entity::find()
             .filter(agent::Column::Name.eq(name))
@@ -597,17 +598,17 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         }
 
         let mut program = PreparedProgram::new();
-        match language.prepare(&src, &mut program, &state.itf) {
-            Err(s) => return Err(Response::basic_error(Status::BadRequest, &format!("Failed to prepare program! {}", s))),
-            _ => {}
-        }
+        let src_file = random_file(RUN_DIR, ".src");
+
+        async_std::fs::write(&src_file, &src).await.unwrap();
 
         let id = state.executor.add_player(
             name.to_string(), 
             language_id.to_string(), 
             program.dir_as_string(),
-            program.src.map(|x| x.to_str().unwrap().to_string()),
-            Some(profile.id)
+            Some(src_file),
+            Some(profile.id),
+            true
         ).await;
 
         let mut res = Response::new();
@@ -616,6 +617,28 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         res.set_body(serde_json::to_string(&json!({
             "agent_id": id
         })).unwrap().into_bytes());
+
+        let itf = state.executor.itf.clone();
+        let db = state.db.clone();
+        async_std::task::spawn(async move {
+            let result = language.prepare(&src, &mut program, &itf).await;
+            let mut agent: agent::ActiveModel = agent::Entity::find_by_id(id).one(&db).await.unwrap().unwrap().into();
+
+            match result {
+                Ok(()) => {
+                    agent.partial = ActiveValue::Set(false)
+                },
+                Err(e) => {
+                    let error_file = random_file(RUN_DIR, ".compile-error");
+                    async_std::fs::write(&error_file, &e).await.unwrap();
+
+                    agent.removed = ActiveValue::Set(true);
+                    agent.error_file = ActiveValue::Set(Some(error_file));
+                }
+            }
+
+            agent.update(&db).await.unwrap();
+        });
 
         Ok(res)
     } else {
@@ -673,7 +696,7 @@ fn generate_admin_password() -> String {
         .collect()
 }
 
-pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, languages: Vec<Arc<dyn Language>>, itf: GameInterface, db: DatabaseConnection) -> std::io::Result<()> {
+pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, itf: GameInterface, db: DatabaseConnection) -> std::io::Result<()> {
     let addr = SocketAddr::from(([0, 0, 0, 0], 42069));
 
     let listener = TcpListener::bind(addr).await.unwrap();
@@ -681,7 +704,7 @@ pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, langua
     let state = AppState {
         executor,
         super_secret_admin_password: generate_admin_password(),
-        languages: Arc::new(languages),
+        languages: Arc::new(get_all_languages()),
         itf,
         db
     };

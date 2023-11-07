@@ -1,5 +1,6 @@
 use std::fmt::format;
 
+use async_trait::async_trait;
 use gamedef::game_interface::{
     get_enum_variant_type, is_basic_enum, BuiltinType, EnumVariants, StructFields, Type,
 };
@@ -369,6 +370,7 @@ fn write_encoder(ty: &Type, indent: usize, val: String, out: &mut String, discri
 }
 
 //TODO: C++ Versioning
+#[async_trait]
 impl Language for CppLang {
     fn name(&self) -> &'static str {
         "C++"
@@ -550,7 +552,7 @@ int main(){
         res
     }
 
-    fn prepare(
+    async fn prepare(
         &self,
         src: &str,
         out: &mut super::language::PreparedProgram,

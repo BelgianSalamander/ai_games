@@ -1,12 +1,13 @@
 use std::{sync::{Arc, atomic::{AtomicUsize, Ordering}}, time::Duration, collections::{HashMap, HashSet}};
 
 use async_std::{sync::Mutex, fs::File};
+use deadpool::unmanaged::Pool;
 use gamedef::{game_interface::GameInterface, parser::parse_game_interface};
 use log::{debug, error, warn, info};
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QueryOrder, sea_query::{Func, SimpleExpr}, QuerySelect, OrderedStatement, QueryTrait, ActiveValue, ActiveModelTrait, Value};
 
 use crate::{
-    games::Game, isolate::sandbox::IsolateSandbox, langs::{get_all_languages, language::Language}, util::{pool::Pool, temp_file::{TempFile, random_file}, ActiveValueExtension, RUN_DIR}, entities::{agent, self},
+    games::Game, isolate::sandbox::IsolateSandbox, langs::{get_all_languages, language::Language}, util::{temp_file::{TempFile, random_file}, ActiveValueExtension, RUN_DIR}, entities::{agent, self},
 };
 
 use crate::entities::prelude::*;
@@ -41,7 +42,7 @@ pub struct PlayerInfo {
 }
 
 pub struct GameRunner<T: Game + 'static> {
-    sandboxes: Arc<Mutex<Pool<IsolateSandbox>>>,
+    sandboxes: Pool<IsolateSandbox>,
     db: DatabaseConnection,
 
     pub game: Arc<T>,
@@ -50,7 +51,7 @@ pub struct GameRunner<T: Game + 'static> {
 }
 
 impl<T: Game + 'static> GameRunner<T> {
-    pub async fn new(game: T, name: &str, num_sandboxes: usize, db: DatabaseConnection, languages: Vec<Arc<dyn Language>>) -> Self {
+    pub async fn new(game: T, name: &str, num_sandboxes: usize, db: DatabaseConnection) -> Self {
         let itf_path = format!("res/games/{}.game", name);
         let itf = std::fs::read_to_string(itf_path).unwrap();
         let itf = parse_game_interface(&itf, name.to_string()).unwrap();
@@ -59,8 +60,11 @@ impl<T: Game + 'static> GameRunner<T> {
             lang.prepare_files(&itf);
         }
 
-        let pool = Pool::new_async(num_sandboxes, |i| IsolateSandbox::new(i as _)).await;
-        let pool = Arc::new(Mutex::new(pool));
+        let pool = Pool::new(num_sandboxes);
+
+        for i in 0..num_sandboxes {
+            pool.add(IsolateSandbox::new(i as u32).await).await;
+        }
 
         //Set all agents to not in_game
         Agent::update_many()
@@ -74,17 +78,18 @@ impl<T: Game + 'static> GameRunner<T> {
 
             game: Arc::new(game),
             itf,
-            languages
+            languages: get_all_languages()
         }
     }
 
-    pub async fn add_player(&self, name: String, language: String, directory: String, source_file: Option<String>, owner_id: Option<i32>) -> i32 {
+    pub async fn add_player(&self, name: String, language: String, directory: String, source_file: Option<String>, owner_id: Option<i32>, partial: bool) -> i32 {
         let agent = agent::ActiveModel {
             name: ActiveValue::Set(name),
             language: ActiveValue::Set(language),
             directory: ActiveValue::Set(directory),
             source_file: ActiveValue::Set(source_file),
             owner_id: ActiveValue::Set(owner_id),
+            partial: ActiveValue::Set(partial),
             ..Default::default()
         };
         let res = Agent::insert(agent).exec(&self.db).await.unwrap();
@@ -103,6 +108,7 @@ impl<T: Game + 'static> GameRunner<T> {
             let players = Agent::find()
                 .filter(agent::Column::InGame.eq(false))
                 .filter(agent::Column::Removed.eq(false))
+                .filter(agent::Column::Partial.eq(false))
                 .order_by_asc(SimpleExpr::FunctionCall(Func::random()))
                 .limit(self.game.num_players() as u64)
                 .all(&self.db).await.unwrap();
@@ -113,11 +119,20 @@ impl<T: Game + 'static> GameRunner<T> {
                 continue;
             }
 
-            let mut pool = self.sandboxes.lock().await;
-            if pool.num_available() < self.game.num_players() {
-                continue;
+            let mut sanboxes = vec![];
+
+            for i in 0..self.game.num_players() {
+                if let Ok(sandbox) = self.sandboxes.try_get() {
+                    sanboxes.push(sandbox);
+                } else {
+                    break;
+                }
             }
 
+            if sanboxes.len() != players.len() {
+                continue;
+            }
+ 
             let players: Vec<_> = futures::future::join_all(players.into_iter().map(|p| {
                 let mut active: entities::agent::ActiveModel = p.into();
                 active.in_game = ActiveValue::Set(true);
@@ -125,29 +140,26 @@ impl<T: Game + 'static> GameRunner<T> {
             })).await.into_iter().map(|x| x.unwrap()).collect();
 
             let mut agents = vec![];
-            let mut sandboxes_to_free = vec![];
 
-            for player in players.iter() {
+            for (sandbox, player) in sanboxes.into_iter().zip(players.iter()) {
                 let language = self.get_language(&player.language).unwrap();
 
-                let (sandbox_id, sandbox) = pool.get().unwrap();
-
                 //TODO: Free sandbox as soon as it can be freed?
-                agents.push(language.launch(&player.directory, sandbox, &self.itf));
-                sandboxes_to_free.push(sandbox_id);
+                let mut job = language.launch(&player.directory, sandbox.as_ref(), &self.itf);
+
+                job.add_post_exit(move |_| {
+                    drop(sandbox);
+                });
+
+                agents.push(job);
             }
 
             let game_copy = self.game.clone();
             let db_copy = self.db.clone();
 
-            let sandboxes = self.sandboxes.clone();
             async_std::task::spawn(async move {
                 info!("Starting a game!");
                 let results = game_copy.run(&mut agents, None).await;
-
-                for idx in sandboxes_to_free {
-                    sandboxes.lock().await.release(idx);
-                }
 
                 let mut players: Vec<entities::agent::ActiveModel> = players.into_iter().map(|p| p.into()).collect();
 
