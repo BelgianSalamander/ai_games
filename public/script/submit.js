@@ -36,7 +36,7 @@ function submit() {
     }).then(d => {
         if (d.status == 200) {
             d.json().then(data => {
-                
+                window.location = `/public/agent.html?agent=${data['agent_id']}`;
             })
         } else {
             d.text().then(error => {
