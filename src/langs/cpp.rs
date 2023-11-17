@@ -1,10 +1,18 @@
-use std::fmt::format;
+use std::{fmt::format, fs::File};
 
 use async_trait::async_trait;
+use deadpool::unmanaged::Pool;
 use gamedef::game_interface::{
     get_enum_variant_type, is_basic_enum, BuiltinType, EnumVariants, StructFields, Type,
 };
 use sea_orm::sea_query::func;
+
+use crate::{
+    isolate::sandbox::{
+        DirMapping, IsolateSandbox, LaunchOptions, MaxProcessCount, make_public,
+    },
+    util::temp_file::random_dir,
+};
 
 use super::{files::ClientFiles, language::Language};
 
@@ -46,7 +54,12 @@ pub fn struct_fields(fields: &StructFields, pretty: bool, indent: &str) -> Strin
     res
 }
 
-pub fn full_enum_decl(variants: &EnumVariants, pretty: bool, omit_static: bool, name: Option<String>) -> String {
+pub fn full_enum_decl(
+    variants: &EnumVariants,
+    pretty: bool,
+    omit_static: bool,
+    name: Option<String>,
+) -> String {
     let mut res = String::new();
     if let Some(name) = name {
         res.push_str(&format!("struct {} {{", name))
@@ -70,7 +83,6 @@ pub fn full_enum_decl(variants: &EnumVariants, pretty: bool, omit_static: bool, 
     }
 
     res.push_str("union EnumMembers {");
-
 
     for (idx, variant) in variants.iter().enumerate() {
         if pretty {
@@ -196,7 +208,13 @@ fn write_struct_decoder(
 
     for (idx, field) in fields.iter().enumerate() {
         let field_name = &field.name;
-        write_decoder(&field.ty, indent, format!("{base_addr}.{field_name}"), out, discriminant);
+        write_decoder(
+            &field.ty,
+            indent,
+            format!("{base_addr}.{field_name}"),
+            out,
+            discriminant,
+        );
     }
 }
 
@@ -211,16 +229,12 @@ pub fn write_decoder(
     match ty {
         Type::Builtin(BuiltinType::Str) => {
             out.push_str(&indent_str);
-            out.push_str(&format!(
-                "readString({base_addr});\n"
-            ));
+            out.push_str(&format!("readString({base_addr});\n"));
         }
         Type::Builtin(builtin) => {
             let name = type_as_inline_cpp(ty);
             out.push_str(&indent_str);
-            out.push_str(&format!(
-                "readData<{name}>({base_addr});\n"
-            ));
+            out.push_str(&format!("readData<{name}>({base_addr});\n"));
         }
         Type::Array(elem, size) => {
             let elem_name = type_as_inline_cpp(elem);
@@ -231,7 +245,9 @@ pub fn write_decoder(
             out.push_str(&format!(
                 "{indent_str}for (int i = 0; i < {size}; i++) {{\n"
             ));
-            out.push_str(&format!("{indent_str}    {elem_name}& {new_base_addr} = {base_addr}[i];\n"));
+            out.push_str(&format!(
+                "{indent_str}    {elem_name}& {new_base_addr} = {base_addr}[i];\n"
+            ));
             write_decoder(&elem, indent + 1, new_base_addr, out, discriminant);
             out.push_str(&format!("{indent_str}}}\n"));
         }
@@ -248,14 +264,14 @@ pub fn write_decoder(
             out.push_str(&format!(
                 "{indent_str}for (int i = 0; i < {new_size}; i++) {{\n"
             ));
-            out.push_str(&format!("{indent_str}    {elem_name}& {new_base_addr} = {base_addr}[i];\n"));
+            out.push_str(&format!(
+                "{indent_str}    {elem_name}& {new_base_addr} = {base_addr}[i];\n"
+            ));
             write_decoder(&elem, indent + 1, new_base_addr, out, discriminant);
             out.push_str(&format!("{indent_str}}}\n"));
         }
         Type::NamedType(name) => {
-            out.push_str(&format!(
-                "{indent_str}read_{name}({base_addr});\n"
-            ));
+            out.push_str(&format!("{indent_str}read_{name}({base_addr});\n"));
         }
         Type::Struct(fields) => {
             write_struct_decoder(fields, indent, base_addr, out, discriminant);
@@ -264,14 +280,14 @@ pub fn write_decoder(
             if is_basic_enum(&variants) {
                 let name = type_as_inline_cpp(&Type::Builtin(get_enum_variant_type(variants)));
                 out.push_str(&indent_str);
-                out.push_str(&format!(
-                    "readData<{name}>(*(({name}*) &{base_addr}));\n"
-                ));
+                out.push_str(&format!("readData<{name}>(*(({name}*) &{base_addr}));\n"));
             } else {
                 let variant_type_name =
                     type_as_inline_cpp(&Type::Builtin(get_enum_variant_type(variants)));
 
-                out.push_str(&format!("{indent_str}readData<{variant_type_name}>({base_addr}.variant_id);\n"));
+                out.push_str(&format!(
+                    "{indent_str}readData<{variant_type_name}>({base_addr}.variant_id);\n"
+                ));
 
                 out.push_str(&indent_str);
                 for (idx, variant) in variants.iter().enumerate() {
@@ -282,7 +298,13 @@ pub fn write_decoder(
                     }
                     out.push_str(&format!("if ({base_addr}.variant_id == {idx}) {{\n"));
 
-                    write_struct_decoder(&variant.types, indent + 1, format!("{base_addr}.inner.{}_val", variant_name), out, discriminant);
+                    write_struct_decoder(
+                        &variant.types,
+                        indent + 1,
+                        format!("{base_addr}.inner.{}_val", variant_name),
+                        out,
+                        discriminant,
+                    );
 
                     out.push_str(&format!("{indent_str}}} "));
                 }
@@ -293,14 +315,32 @@ pub fn write_decoder(
     }
 }
 
-fn write_struct_encoder(fields: &StructFields, indent: usize, val: String, out: &mut String, discriminant: &mut usize) {
+fn write_struct_encoder(
+    fields: &StructFields,
+    indent: usize,
+    val: String,
+    out: &mut String,
+    discriminant: &mut usize,
+) {
     for field in fields {
         let name = &field.name;
-        write_encoder(&field.ty, indent, format!("{val}.{name}"), out, discriminant);
+        write_encoder(
+            &field.ty,
+            indent,
+            format!("{val}.{name}"),
+            out,
+            discriminant,
+        );
     }
 }
 
-fn write_encoder(ty: &Type, indent: usize, val: String, out: &mut String, discriminant: &mut usize) {
+fn write_encoder(
+    ty: &Type,
+    indent: usize,
+    val: String,
+    out: &mut String,
+    discriminant: &mut usize,
+) {
     let indent_str = "    ".repeat(indent);
 
     match ty {
@@ -311,9 +351,15 @@ fn write_encoder(ty: &Type, indent: usize, val: String, out: &mut String, discri
             out.push_str(&format!(
                 "{indent_str}for (int {idx} = 0; {idx} < {size}; {idx}++) {{\n"
             ));
-            write_encoder(&elem, indent + 1, format!("{val}[{idx}]"), out, discriminant);
+            write_encoder(
+                &elem,
+                indent + 1,
+                format!("{val}[{idx}]"),
+                out,
+                discriminant,
+            );
             out.push_str(&format!("{indent_str}}}\n"));
-        },
+        }
         Type::DynamicArray(elem) => {
             let idx = format!("i_{discriminant}");
             *discriminant += 1;
@@ -321,32 +367,42 @@ fn write_encoder(ty: &Type, indent: usize, val: String, out: &mut String, discri
             out.push_str(&format!(
                 "{indent_str}for (int {idx} = 0; {idx} < {val}.size(); {idx}++) {{\n"
             ));
-            write_encoder(&elem, indent + 1, format!("{val}[{idx}]"), out, discriminant);
+            write_encoder(
+                &elem,
+                indent + 1,
+                format!("{val}[{idx}]"),
+                out,
+                discriminant,
+            );
             out.push_str(&format!("{indent_str}}}\n"));
-        },
+        }
         Type::NamedType(name) => {
             out.push_str(&format!("{indent_str}write_{name}({val});\n"));
-        },
+        }
         Type::Builtin(BuiltinType::Str) => {
             out.push_str(&format!("{indent_str}writeString({val});\n"));
-        },
+        }
         Type::Builtin(_) => {
             let name = type_as_inline_cpp(ty);
 
             out.push_str(&format!("{indent_str}writeData<{name}>({val});\n"));
-        },
+        }
         Type::Struct(fields) => {
             write_struct_encoder(&fields, indent, val, out, discriminant);
-        },
+        }
         Type::Enum(variants) => {
             if is_basic_enum(&variants) {
                 let name = type_as_inline_cpp(&Type::Builtin(get_enum_variant_type(variants)));
-                out.push_str(&format!("{indent_str}writeData<{name}>(*(({name}*) &{val}));\n"));
+                out.push_str(&format!(
+                    "{indent_str}writeData<{name}>(*(({name}*) &{val}));\n"
+                ));
             } else {
                 let variant_type_name =
                     type_as_inline_cpp(&Type::Builtin(get_enum_variant_type(variants)));
 
-                out.push_str(&format!("{indent_str}writeData<{variant_type_name}>({val}.variant_id);\n"));
+                out.push_str(&format!(
+                    "{indent_str}writeData<{variant_type_name}>({val}.variant_id);\n"
+                ));
 
                 out.push_str(&indent_str);
                 for (idx, variant) in variants.iter().enumerate() {
@@ -357,14 +413,20 @@ fn write_encoder(ty: &Type, indent: usize, val: String, out: &mut String, discri
                     }
                     out.push_str(&format!("if ({val}.variant_id == {idx}) {{\n"));
 
-                    write_struct_encoder(&variant.types, indent + 1, format!("{val}.inner.{variant_name}_val"), out, discriminant);
+                    write_struct_encoder(
+                        &variant.types,
+                        indent + 1,
+                        format!("{val}.inner.{variant_name}_val"),
+                        out,
+                        discriminant,
+                    );
 
                     out.push_str(&format!("{indent_str}}} "));
                 }
 
                 out.push_str("\n");
             }
-        },
+        }
         _ => {}
     }
 }
@@ -446,7 +508,7 @@ impl Language for CppLang {
                 let mut do_ref = match ty {
                     Type::Builtin(BuiltinType::Str) => true,
                     Type::Builtin(_) => false,
-                    _ => true
+                    _ => true,
                 };
 
                 if do_ref {
@@ -468,7 +530,6 @@ impl Language for CppLang {
         res.add_file("game.h", function_decl, false);
 
         let mut interactor = String::new();
-        interactor.push_str("#include \"game_types.h\"\n");
         interactor.push_str("#include \"game.h\"\n");
         interactor.push_str("#include \"interact_lib.hpp\"\n");
         interactor.push_str("\n\n");
@@ -490,12 +551,12 @@ impl Language for CppLang {
         }
 
         interactor.push_str(
-"
+            "
 int main(){
     while(true) {
         uint8_t func_id;
         readData<uint8_t>(func_id);
-"
+",
         );
 
         interactor.push_str("        ");
@@ -557,8 +618,56 @@ int main(){
         src: &str,
         out: &mut super::language::PreparedProgram,
         game_interface: &gamedef::game_interface::GameInterface,
+        sandboxes: Pool<IsolateSandbox>,
     ) -> Result<(), String> {
-        todo!()
+        let sandbox = sandboxes.get().await.unwrap();
+
+        let temp_folder = random_dir("./tmp");
+        async_std::fs::write(format!("{}/{}", temp_folder, "agent.cpp"), src)
+            .await
+            .unwrap();
+
+        make_public(&out.dir_as_string()).await;
+
+        let mut compile_job: crate::isolate::sandbox::RunningJob = sandbox.launch(
+            "/usr/bin/g++".to_string(),
+            vec![
+                "-I/client_files/".to_string(),
+                "-O2".to_string(),
+                "-Wall".to_string(),
+                "-std=c++20".to_string(),
+                "-o".to_string(),
+                "/out/agent.o".to_string(),
+                "/client_files/interactor.cpp".to_string(),
+                "/src/agent.cpp".to_string(),
+            ],
+            /*vec![
+                (self.get_dir(&game_interface), "/client_files".to_string()),
+                (out.dir_as_string(), "/out".to_string()),
+                (temp_folder.clone(), "/src".to_string()),
+                ("/usr/bin".to_string(), "/usr/bin".to_string())
+            ],
+            vec![],
+            None,*/
+            &LaunchOptions::new()
+                .memory_limit_kb(512000)
+                .time_limit_s(10.0)
+                .max_processes(MaxProcessCount::Unlimited)
+                .map_dir("/client_files", self.get_dir(game_interface))
+                .add_mapping(DirMapping::named("/out", out.dir_as_string()).read_write())
+                .map_dir("/src", temp_folder.clone())
+                .map_dir("/usr/bin", "/usr/bin")
+                .full_env()
+        );
+
+        let status = compile_job.wait().await.unwrap();
+
+
+        if !status.success() {
+            return Err(compile_job.stderr.read_as_string().await);
+        }
+
+        Ok(())
     }
 
     fn launch(
@@ -567,6 +676,11 @@ int main(){
         sandbox: &crate::isolate::sandbox::IsolateSandbox,
         itf: &gamedef::game_interface::GameInterface,
     ) -> crate::isolate::sandbox::RunningJob {
-        todo!()
+        sandbox.launch(
+            format!("{data_dir}/agent.o"), 
+            vec![], 
+            &LaunchOptions::new()
+                .map_full(data_dir)
+        )
     }
 }

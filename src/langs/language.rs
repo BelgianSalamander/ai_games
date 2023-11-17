@@ -2,6 +2,7 @@ use std::{path::Path, fmt::format};
 
 use async_std::path::PathBuf;
 use async_trait::async_trait;
+use deadpool::unmanaged::Pool;
 use gamedef::game_interface::{GameInterface, self};
 use rand::Rng;
 
@@ -60,7 +61,7 @@ pub trait Language: Send + Sync {
     fn generate(&self, game_interface: &GameInterface) -> ClientFiles;
 
     //TODO: Make prepare async to allow for compiled languages to work
-    async fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface) -> Result<(), String>;
+    async fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface, sandboxes: Pool<IsolateSandbox>) -> Result<(), String>;
 
     fn launch(&self, data_dir: &str, sandbox: &IsolateSandbox, itf: &GameInterface) -> RunningJob;
 

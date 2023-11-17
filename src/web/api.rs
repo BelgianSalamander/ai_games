@@ -621,7 +621,7 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         let itf = state.executor.itf.clone();
         let db = state.db.clone();
         async_std::task::spawn(async move {
-            let result = language.prepare(&src, &mut program, &itf).await;
+            let result = language.prepare(&src, &mut program, &itf, state.executor.sandboxes.clone()).await;
             let mut agent: agent::ActiveModel = agent::Entity::find_by_id(id).one(&db).await.unwrap().unwrap().into();
 
             match result {

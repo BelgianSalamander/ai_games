@@ -20,7 +20,7 @@ pub fn random_file(dir: &str, ext: &str) -> String {
 pub fn random_dir(parent: &str) -> String {
     let dir = format!("{}/{}", parent, rand_str(25));
 
-    std::fs::create_dir(&dir).unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
 
     dir
 }
@@ -88,6 +88,10 @@ impl TempFile {
 
     pub fn freeze(&mut self) {
         self.frozen = true;
+    }
+
+    pub async fn read_as_string(&mut self) -> String {
+        async_std::fs::read_to_string(&self.path).await.unwrap()
     }
 }
 

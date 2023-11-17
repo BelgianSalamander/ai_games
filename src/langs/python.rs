@@ -1,7 +1,8 @@
 use async_trait::async_trait;
+use deadpool::unmanaged::Pool;
 use gamedef::game_interface::{GameInterface, self, EnumVariants, BuiltinType, Type, get_enum_variant_type, is_basic_enum};
 
-use crate::isolate::sandbox::{RunningJob, LaunchOptionsBuilder};
+use crate::isolate::sandbox::{RunningJob, IsolateSandbox, LaunchOptions, DirMapping};
 
 use super::{language::{Language, PreparedProgram}, files::ClientFiles};
 
@@ -430,7 +431,7 @@ impl Language for Python {
         res
     }
 
-    async fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface) -> Result<(), String> {
+    async fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface, _sandboxes: Pool<IsolateSandbox>) -> Result<(), String> {
         out.add_src_file("game.py", src);
 
         Ok(())
@@ -440,15 +441,10 @@ impl Language for Python {
         sandbox.launch(
             "/usr/bin/python3".to_string(),
             vec!["/prog/run/interactor.py".to_string()], 
-            vec![
-                (self.get_dir(game_interface), "/prog".to_string()),
-                (data_dir.to_string(), "/game".to_string())
-            ],
-            vec![
-                ("PYTHONPATH".to_string(), "/game".to_string())
-            ],
-            None,
-            &LaunchOptionsBuilder::new().build(),
+            &LaunchOptions::new()
+                .map_dir("/prog", self.get_dir(game_interface))
+                .map_dir("/game", data_dir)
+                .set_env("PYTHONPATH", "/game")
         )
     }
 }

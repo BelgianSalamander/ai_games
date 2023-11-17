@@ -2,13 +2,13 @@ use async_std::sync::Mutex;
 use isolate::sandbox::IsolateSandbox;
 use log::{info, debug};
 use proc_gamedef::make_server;
-use sea_orm::{DbErr, Database, EntityTrait, QueryFilter};
+use sea_orm::{DbErr, Database, EntityTrait, QueryFilter, ColumnTrait};
 use util::DATABASE_URL;
 use std::{io::Write, path::Path, process::{Command, exit}, time::Duration, sync::Arc, env};
 
 use gamedef::parser::parse_game_interface;
 
-use crate::{isolate::{sandbox::LaunchOptionsBuilder}, langs::{python::Python, language::{Language, PreparedProgram}, javascript::make_js_deserializers, cpp::CppLang}, games::{oxo::TicTacToe, Game}, util::{RUN_DIR}, players::{auto_exec::GameRunner}, web::api};
+use crate::{langs::{python::Python, language::{Language, PreparedProgram}, javascript::make_js_deserializers, cpp::CppLang}, games::{oxo::TicTacToe, Game}, util::{RUN_DIR}, players::{auto_exec::GameRunner}, web::api, entities::agent};
 
 pub mod isolate;
 pub mod util;
@@ -76,7 +76,9 @@ fn main() {
     async_std::task::block_on(async {
         let db = Database::connect(DATABASE_URL).await.unwrap();
         let db_copy = db.clone();
-        //entities::prelude::Agent::delete_many().exec(&db).await.unwrap();
+        entities::prelude::Agent::delete_many()
+            .filter(agent::Column::Partial.eq(true))
+            .exec(&db).await.unwrap();
 
         let runner = Arc::new(GameRunner::new(game, "tic_tac_toe", 10, db).await);
 

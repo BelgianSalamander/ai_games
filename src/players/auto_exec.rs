@@ -42,7 +42,7 @@ pub struct PlayerInfo {
 }
 
 pub struct GameRunner<T: Game + 'static> {
-    sandboxes: Pool<IsolateSandbox>,
+    pub sandboxes: Pool<IsolateSandbox>,
     db: DatabaseConnection,
 
     pub game: Arc<T>,

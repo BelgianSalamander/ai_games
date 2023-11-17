@@ -71,15 +71,155 @@ fn actual_path(path: &str) -> String {
     }
 }
 
-#[derive(Copy, Clone)]
+/*
+pub fn launch(
+        &self,
+        program: String, args: Vec<String>, 
+        mapped_dirs: Vec<(String, String)>,
+        env_vars: Vec<(String, String)>,
+        stdin_file: Option<String>, options: &LaunchOptions
+    ) -> RunningJob {
+*/
+
+#[derive(Debug, Clone, Copy)]
+pub enum DirectoryOption {
+    ReadWrite,
+    Dev,
+    NoExec,
+    Maybe,
+    Filesystem,
+    NoRecursive
+}
+
+impl DirectoryOption {
+    fn key(&self) -> &'static str {
+        match self {
+            DirectoryOption::ReadWrite => "rw",
+            DirectoryOption::Dev => "dev",
+            DirectoryOption::NoExec =>"noexec",
+            DirectoryOption::Maybe => "maybe",
+            DirectoryOption::Filesystem => "fs",
+            DirectoryOption::NoRecursive => "norec",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum MappingKind {
+    NamedMapping(String, String),
+    FullMapping(String)
+}
+
+#[derive(Debug, Clone)]
+pub struct DirMapping {
+    mapping: MappingKind,
+    options: Vec<DirectoryOption>
+}
+
+impl DirMapping {
+    pub fn named<A: Into<String>, B: Into<String>>(sandbox_path: A, external_path: B) -> Self {
+        Self {
+            mapping: MappingKind::NamedMapping(sandbox_path.into(), external_path.into()),
+
+            options: vec![]
+        }
+    }
+
+    pub fn full<A: Into<String>>(path: A) -> Self {
+        Self {
+            mapping: MappingKind::FullMapping(path.into()),
+
+            options: vec![]
+        }
+    }
+
+    pub fn read_write(mut self) -> Self {
+        self.options.push(DirectoryOption::ReadWrite);
+        self
+    }
+
+    pub fn dev(mut self) -> Self {
+        self.options.push(DirectoryOption::Dev);
+        self
+    }
+
+    pub fn no_exec(mut self) -> Self {
+        self.options.push(DirectoryOption::NoExec);
+        self
+    }
+
+    pub fn maybe(mut self) -> Self {
+        self.options.push(DirectoryOption::Maybe);
+        self
+    }
+
+    pub fn filesystem(mut self) -> Self {
+        self.options.push(DirectoryOption::Filesystem);
+        self
+    }
+
+    pub fn no_recursive(mut self) -> Self {
+        self.options.push(DirectoryOption::NoRecursive);
+        self
+    }
+
+    pub fn to_arg(&self) -> String {
+        let mut res = match &self.mapping {
+            MappingKind::NamedMapping(sandbox_path, external_path) => format!("--dir={}={}", sandbox_path, actual_path(&external_path)),
+            MappingKind::FullMapping(path) => format!("--dir={}", actual_path(&path))
+        };
+
+        for opt in &self.options {
+            res.push_str(&format!(":{}", opt.key()));
+        }
+
+        res
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum EnvRule {
+    Inherit(String),
+    SetValue(String, String),
+    InheritAll
+}
+
+impl EnvRule {
+    pub fn to_arg(&self) -> String {
+        match self {
+            EnvRule::Inherit(var) => format!("--env={var}"),
+            EnvRule::SetValue(var, value) => format!("--env={var}={value}"),
+            EnvRule::InheritAll => "--full-env".to_string(),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct LaunchOptions {
     pub memory_limit_kb: Option<u32>,
     pub time_limit_s: Option<f32>,
     pub wall_time_limit_s: Option<f32>,
     pub extra_time_s: Option<f32>,
+
+    pub max_process: MaxProcessCount,
+    pub mapped_dirs: Vec<DirMapping>,
+    pub env: Vec<EnvRule>
 }
 
 impl LaunchOptions {
+    pub fn new() -> Self {
+        Self {
+            memory_limit_kb: None,
+            time_limit_s: None,
+            wall_time_limit_s: None,
+            extra_time_s: None,
+
+            max_process: MaxProcessCount::Fixed(1),
+            mapped_dirs: vec![],
+            env: vec![]
+        }
+    }
+
     pub fn get_memory_limit_kb(&self) -> u32 {
         self.memory_limit_kb.unwrap_or(4 * 1024 * 1024)
     }
@@ -95,53 +235,67 @@ impl LaunchOptions {
     pub fn get_extra_time_s(&self) -> f32 {
         self.extra_time_s.unwrap_or(0.5)
     }
-}
 
-pub struct LaunchOptionsBuilder {
-    memory_limit_kb: Option<u32>,
-    time_limit_s: Option<f32>,
-    wall_time_limit_s: Option<f32>,
-    extra_time_s: Option<f32>,
-}
-
-impl LaunchOptionsBuilder {
-    pub fn new() -> LaunchOptionsBuilder {
-        LaunchOptionsBuilder {
-            memory_limit_kb: None,
-            time_limit_s: None,
-            wall_time_limit_s: None,
-            extra_time_s: None,
-        }
-    }
-
-    pub fn memory_limit_kb(mut self, memory_limit_kb: u32) -> LaunchOptionsBuilder {
+    pub fn memory_limit_kb(mut self, memory_limit_kb: u32) -> Self {
         self.memory_limit_kb = Some(memory_limit_kb);
         self
     }
 
-    pub fn time_limit_s(mut self, time_limit_s: f32) -> LaunchOptionsBuilder {
+    pub fn time_limit_s(mut self, time_limit_s: f32) -> Self {
         self.time_limit_s = Some(time_limit_s);
         self
     }
 
-    pub fn wall_time_limit_s(mut self, wall_time_limit_s: f32) -> LaunchOptionsBuilder {
+    pub fn wall_time_limit_s(mut self, wall_time_limit_s: f32) -> Self {
         self.wall_time_limit_s = Some(wall_time_limit_s);
         self
     }
 
-    pub fn extra_time_s(mut self, extra_time_s: f32) -> LaunchOptionsBuilder {
+    pub fn extra_time_s(mut self, extra_time_s: f32) -> Self {
         self.extra_time_s = Some(extra_time_s);
         self
     }
 
-    pub fn build(self) -> LaunchOptions {
-        LaunchOptions {
-            memory_limit_kb: self.memory_limit_kb,
-            time_limit_s: self.time_limit_s,
-            wall_time_limit_s: self.wall_time_limit_s,
-            extra_time_s: self.extra_time_s,
-        }
+    pub fn max_processes(mut self, max_process: MaxProcessCount) -> Self {
+        self.max_process = max_process;
+        self
     }
+
+    pub fn add_mapping(mut self, mapping: DirMapping) -> Self {
+        self.mapped_dirs.push(mapping);
+        self
+    }
+
+    pub fn map_dir<A: Into<String>, B: Into<String>>(mut self, internal: A, external: B) -> Self {
+        self.add_mapping(DirMapping::named(internal, external))
+    }
+
+    pub fn map_full<A: Into<String>>(mut self, path: A) -> Self {
+        self.add_mapping(DirMapping::full(path))
+    }
+
+    pub fn env_rule(mut self, env: EnvRule) -> Self {
+        self.env.push(env);
+        self
+    }
+
+    pub fn inherit<A: Into<String>>(mut self, var: A) -> Self {
+        self.env_rule(EnvRule::Inherit(var.into()))
+    }
+
+    pub fn set_env<A: Into<String>, B: Into<String>>(mut self, var: A, value: B) -> Self {
+        self.env_rule(EnvRule::SetValue(var.into(), value.into()))
+    }
+
+    pub fn full_env(mut self) -> Self {
+        self.env_rule(EnvRule::InheritAll)
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum MaxProcessCount {
+    Fixed(usize),
+    Unlimited
 }
 
 pub struct LaunchInfo {
@@ -359,14 +513,14 @@ impl RunningJob {
         Ok(val != 0)
     }
 
-    pub async fn wait(&mut self) -> Result<(), Error> {
+    pub async fn wait(&mut self) -> Result<ExitStatus, Error> {
         match self.child.status().await {
             Ok(x) => {
                 if !x.success() {
                     println!("Child exited with status {}", x);
                 }
 
-                Ok(())
+                Ok(x)
             },
             Err(e) => Err(e)
         }
@@ -467,6 +621,15 @@ impl Drop for RunningJob {
 
 const ISOLATE_PATH: &str = "isolate";
 
+pub async fn make_public(dir: &str) {
+    let mut command = Command::new("chmod");
+    command.arg("-R");
+    command.arg("a+rw");
+    command.arg(dir);
+
+    command.output().await.unwrap();
+}
+
 impl IsolateSandbox {
     pub async fn new(id: u32) -> IsolateSandbox {
         let mut sandbox = IsolateSandbox {
@@ -513,9 +676,7 @@ impl IsolateSandbox {
     pub fn launch(
         &self,
         program: String, args: Vec<String>, 
-        mapped_dirs: Vec<(String, String)>,
-        env_vars: Vec<(String, String)>,
-        stdin_file: Option<String>, options: &LaunchOptions
+        options: &LaunchOptions
     ) -> RunningJob {
         trace!("Launching command {} in sandbox {}", program, self.box_id);
         let mut command = Command::new(ISOLATE_PATH);
@@ -530,20 +691,12 @@ impl IsolateSandbox {
             format!("--meta={}", actual_path(&metafile_file.path)).as_str(),
         ]);
 
-        for (host_dir, box_dir) in mapped_dirs {
-            trace!("Binding directory {} to {}", &actual_path(&host_dir), &box_dir);
-            command.args(vec![
-                "--dir",
-                format!("{}={}", box_dir, &actual_path(&host_dir)).as_str()
-            ]);
+        for mapping in &options.mapped_dirs {
+            command.arg(mapping.to_arg());
         }
 
-        for (key, value) in env_vars {
-            trace!("Setting environment variable {} to {}", key, value);
-            command.args(vec![
-                "--env",
-                format!("{}={}", key, value).as_str()
-            ]);
+        for env in &options.env {
+            command.arg(env.to_arg());
         }
 
         command.args(vec![
@@ -572,16 +725,22 @@ impl IsolateSandbox {
             ]);
         }
 
-        command.arg("--run");
-        command.arg(program);
-        command.args(args);
-
-        if let Some(stdin_file) = stdin_file {
-            command.stdin(Stdio::from(File::open(&stdin_file).unwrap()));
-        } else {
-            command.stdin(Stdio::piped());
+        match options.max_process {
+            MaxProcessCount::Fixed(1) => {},
+            MaxProcessCount::Fixed(x) => {
+                command.arg(&format!("--processes={}", x));
+            },
+            MaxProcessCount::Unlimited => {
+                command.arg("--processes");
+            }
         }
 
+        command.arg("--run");
+        command.arg("--");
+        command.arg(&actual_path(&program));
+        command.args(args);
+
+        command.stdin(Stdio::piped());
         command.stdout(Stdio::piped());
         command.stderr(Stdio::from(stderr_file.get_file_write()));
 

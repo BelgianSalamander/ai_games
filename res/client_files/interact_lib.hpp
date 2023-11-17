@@ -72,6 +72,8 @@ void makeBigEndian(int n, void* data) {
 
 template<typename T>
 void readData(T& out) {
+    constexpr size_t SIZE = sizeof(T);
+    
     uint8_t* buffer = (uint8_t*) &out;
     readBytes(SIZE, buffer);
     makeSystemEndian(SIZE, buffer);
@@ -88,7 +90,7 @@ void readString(std::string& out) {
 
 template<typename T>
 void writeData(T x) {
-    constexpr SIZE = sizeof(T);
+    constexpr size_t SIZE = sizeof(T);
 
     void* bytes = (void*) &x;
     makeBigEndian(SIZE, bytes);
