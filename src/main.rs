@@ -77,7 +77,7 @@ fn main() {
         let db = Database::connect(DATABASE_URL).await.unwrap();
         let db_copy = db.clone();
         entities::prelude::Agent::delete_many()
-            .filter(agent::Column::Partial.eq(true))
+            .filter(agent::Column::Partial.eq(true).or(agent::Column::Removed.eq(true)))
             .exec(&db).await.unwrap();
 
         let runner = Arc::new(GameRunner::new(game, "tic_tac_toe", 10, db).await);

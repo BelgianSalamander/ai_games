@@ -632,6 +632,7 @@ int main(){
         let mut compile_job: crate::isolate::sandbox::RunningJob = sandbox.launch(
             "/usr/bin/g++".to_string(),
             vec![
+                //"-DVERBOSE_IO".to_string(),
                 "-I/client_files/".to_string(),
                 "-O2".to_string(),
                 "-Wall".to_string(),
