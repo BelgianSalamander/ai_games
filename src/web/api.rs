@@ -10,7 +10,7 @@ use async_std::{
 };
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 use gamedef::game_interface::GameInterface;
-use log::{info, debug};
+use log::{info, debug, error};
 use rand::Rng;
 use sea_orm::{DatabaseConnection, EntityTrait, ModelTrait, ActiveValue, ActiveModelTrait, QueryFilter, ColumnTrait};
 use serde_json::{json, Value, Number};
@@ -31,6 +31,73 @@ impl<T, E> IgnoreResult for Result<T, E> {
     fn ignore(self) {}
 }
 
+#[derive(Clone)]
+pub struct PageInfo {
+    title: String,
+    filename: String,
+    heading: String
+}
+
+impl PageInfo {
+    pub fn from_json(value: &Value) -> Self {
+        let obj = value.as_object().unwrap();
+
+        Self {
+            title: obj.get("title").unwrap().as_str().unwrap().to_string(),
+            filename: obj.get("filename").unwrap().as_str().unwrap().to_string(),
+            heading: obj.get("heading").unwrap().as_str().unwrap().to_string(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct PageEngine {
+    template: String,
+    pages: HashMap<String, PageInfo>
+}
+
+impl PageEngine {
+    pub fn load() -> Self {
+        let template = std::fs::read_to_string("res/template.html").unwrap();
+
+        let pages = std::fs::read_to_string("res/pages/pages.json").unwrap();
+        let pages: Value = serde_json::from_str(&pages).unwrap();
+        println!("Pages {:?}", pages);
+        let pages = pages.as_object().unwrap();
+
+        let pages: HashMap<_,_> = pages.into_iter().map(|(key, val)| {
+            (key.clone(), PageInfo::from_json(val))
+        }).collect();
+
+        Self {
+            template,
+            pages
+        }
+    }
+
+    pub fn get_page(&self, name: &str) -> Option<String> {
+        if let Some(info) = self.pages.get(name) {
+            let mut result = self.template.clone();
+
+            let content = match std::fs::read_to_string(&format!("./res/pages/{}", name)) {
+                Ok(x) => x,
+                Err(e) => {
+                    error!("Failed to read {name} {e:?}");
+                    return None;
+                }
+            };
+
+            result = result.replace("[TITLE]", &info.title);
+            result = result.replace("[filename]", &info.filename);
+            result = result.replace("[HEADING]", &info.heading);
+            result = result.replace("[CONTENT]", &content);
+
+            Some(result)
+        } else {
+            None
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -38,7 +105,9 @@ pub struct AppState {
     super_secret_admin_password: String,
     languages: Arc<Vec<Arc<dyn Language>>>,
     itf: GameInterface,
-    db: DatabaseConnection
+    db: DatabaseConnection,
+
+    page_engine: PageEngine
 }
 
 async fn get_all_players(state: AppState) -> String {
@@ -319,9 +388,24 @@ async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResul
     if req.matches_path_exact(&[]) {
         let mut res = Response::new();
         res.set_status(Status::PermanentRedirect);
-        res.set_header("Location", "/public/index.html");
+        res.set_header("Location", "/pages/index.html");
 
         Ok(res)
+    } else if req.matches_path(&["pages"]) {
+        let path = req.path.path.get(1).unwrap(); //TODO: Error Handling
+        match state.page_engine.get_page(&path) {
+            Some(x) => {
+                let mut res = Response::new();
+                res.set_status(Status::Accepted);
+                res.set_header("Content-Type", "text/html");
+                res.set_body(x.into_bytes());
+
+                Ok(res)
+            },
+            None => {
+                Err(Response::basic_error(Status::NotFound, "Not found"))
+            }
+        }
     } else if req.matches_path(&["admin"]) {
         if !authenticate_admin(&req, &state) {
             Err(Response::basic_error(Status::Unauthorized, "Unauthorized"))
@@ -720,7 +804,8 @@ pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, itf: G
         super_secret_admin_password: generate_admin_password(),
         languages: Arc::new(get_all_languages()),
         itf,
-        db
+        db,
+        page_engine: PageEngine::load()
     };
 
     println!("Admin password: {}", state.super_secret_admin_password);
