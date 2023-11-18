@@ -123,13 +123,6 @@ fn main() {
         std::fs::create_dir(RUN_DIR).unwrap();
     }
 
-    let itf_path = format!("res/games/{}.game", "snake");
-    let itf = std::fs::read_to_string(itf_path).unwrap();
-    let itf = parse_game_interface(&itf, "snake".to_string()).unwrap();
-    CppLang.prepare_files(&itf);
-
-    let lang = Arc::new(Python);
-
     let game: Box<dyn Game> = Box::new(TicTacToe);
 
     async_std::task::block_on(async {
