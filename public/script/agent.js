@@ -10,7 +10,7 @@ function onLoad() {
 
     const main = document.getElementsByTagName("main")[0];
 
-    fetch(`/api/agent?agent=${agent_id}&error=true`).then(response => response.json()).then(agent => {
+    fetch(`/api/agent?agent=${agent_id}&error=true&src=true`).then(response => response.json()).then(agent => {
         fetch("/api/lang").then(res => res.json()).then(langs => {
             lang_map = {};
 
@@ -68,6 +68,17 @@ function onLoad() {
                     pre.appendChild(e);
                     main.appendChild(pre);
                 }
+            }
+
+            if ("src" in agent) {
+                let src = agent.src;
+
+                let pre = document.createElement("pre");
+                pre.style.backgroundColor = "#454b45";
+                let e = document.createElement("code");
+                e.innerText = src;
+                pre.appendChild(e);
+                main.appendChild(pre);
             }
         });
     });

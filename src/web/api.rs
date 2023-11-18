@@ -205,7 +205,7 @@ async fn get_user(req: &Request, state: &AppState) -> Option<entities::user::Mod
     user
 }
 
-async fn get_agent_data_as_json(agent: &agent::Model, include_error: bool, db: &DatabaseConnection) -> serde_json::Value {
+async fn get_agent_data_as_json(agent: &agent::Model, include_error: bool, include_src: bool, db: &DatabaseConnection) -> serde_json::Value {
     let mut data = json!({
         "id": agent.id,
         "name": agent.name,
@@ -224,6 +224,17 @@ async fn get_agent_data_as_json(agent: &agent::Model, include_error: bool, db: &
                 let error = String::from_utf8(error).unwrap_or("Error file corrupted :(".to_string());
 
                 data.as_object_mut().unwrap().insert("error".to_string(), Value::String(error));
+            }
+        }
+    }
+
+    if include_src {
+        if let Some(src_file) = &agent.source_file {
+            if Path::new(&src_file).exists().await {
+                let src = async_std::fs::read(src_file).await.unwrap();
+                let src = String::from_utf8(src).unwrap_or("Source file corrupted (Invalid UTF-8)".to_string());
+
+                data.as_object_mut().unwrap().insert("src".to_string(), Value::String(src));
             }
         }
     }
@@ -290,7 +301,7 @@ async fn get_profile_data(req: &Request, state: &AppState) -> HttpResult<Respons
         let related = profile.find_related(entities::prelude::Agent).all(&state.db).await.unwrap();
         
         for agent in related {
-            agents.push(get_agent_data_as_json(&agent, false, &state.db).await);
+            agents.push(get_agent_data_as_json(&agent, false, false, &state.db).await);
         }
 
         data.insert("agents", json!(agents));
@@ -419,7 +430,9 @@ async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResul
     } else if req.matches_path_exact(&["api", "agent"]) {
         info!("Querying agent!");
         let agent_id: i32 = req.path.parse_query("agent")?;
+
         let mut send_error: bool = req.path.parse_query("error").unwrap_or(false);
+        let mut send_src: bool = req.path.parse_query("src").unwrap_or(false);
 
         let agent = agent::Entity::find_by_id(agent_id).one(&state.db).await.unwrap();
 
@@ -432,11 +445,12 @@ async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResul
             if let Some(owner) = user::Entity::find_by_id(owner_id).one(&state.db).await.unwrap() {
                 if !is_user_authenticated(&req, &owner) {
                     send_error = false;
+                    send_src = false;
                 }
             }
         }
 
-        let data = get_agent_data_as_json(&agent, send_error, &state.db).await;
+        let data = get_agent_data_as_json(&agent, send_error, send_src, &state.db).await;
 
         let mut res = Response::new();
         res.set_status(Status::Ok);
