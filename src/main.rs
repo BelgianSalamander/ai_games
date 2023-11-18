@@ -1,10 +1,10 @@
-use async_std::sync::Mutex;
+use async_std::{sync::Mutex};
 use isolate::sandbox::IsolateSandbox;
 use log::{info, debug};
 use proc_gamedef::make_server;
-use sea_orm::{DbErr, Database, EntityTrait, QueryFilter, ColumnTrait};
+use sea_orm::{DbErr, Database, EntityTrait, QueryFilter, ColumnTrait, DatabaseConnection};
 use util::DATABASE_URL;
-use std::{io::Write, path::Path, process::{Command, exit}, time::Duration, sync::Arc, env};
+use std::{io::Write, path::{Path, PathBuf}, process::{Command, exit}, time::Duration, sync::Arc, env, collections::HashSet};
 
 use gamedef::parser::parse_game_interface;
 
@@ -45,6 +45,65 @@ async fn db_test() -> Result<(), DbErr> {
     Ok(())
 }
 
+fn cleanup_from_path(path: &PathBuf, dont_delete: &HashSet<PathBuf>) -> bool {
+    debug!("Exploring {:?} for cleanup!", path);
+    if dont_delete.contains(path) {
+        debug!("  Still in use! Skipping!");
+        return true;
+    }
+
+    if path.is_file() {
+        debug!("  Removing file!");
+        std::fs::remove_file(path).unwrap();
+        return false;
+    } else {
+        let mut keep = false;
+
+        for child in std::fs::read_dir(path).unwrap() {
+            if let Ok(entry) = child {
+                if cleanup_from_path(&entry.path(), dont_delete) {
+                    keep = true;
+                }
+            }
+        }
+
+        if !keep {
+            debug!("  Removing {:?}!", path);
+            std::fs::remove_dir(path).unwrap();
+        }
+
+        return keep;
+    }
+}
+
+async fn cleanup_files(db: &DatabaseConnection) {
+    info!("Cleaning up files!");
+    let target_dirs = vec!["./run"];
+
+    let mut dont_delete: HashSet<PathBuf> = HashSet::new();
+
+    for agent in agent::Entity::find().all(db).await.unwrap() {
+        dont_delete.insert(PathBuf::from(agent.directory));
+
+        if let Some(error_file) = agent.error_file {
+            dont_delete.insert(PathBuf::from(error_file));
+        }
+
+        if let Some(src_file) = agent.source_file {
+            dont_delete.insert(PathBuf::from(src_file));
+        }
+    }
+
+    let dont_delete: HashSet<_> = dont_delete.into_iter().map(|x| x.canonicalize().unwrap()).collect();
+
+    debug!("Discovered files:");
+    dont_delete.iter().for_each(|x| debug!(" - {:?}", x));
+
+    for dir in target_dirs {
+        cleanup_from_path(&PathBuf::from(dir).canonicalize().unwrap(), &dont_delete);
+    }
+}
+
 fn main() {
     ensure_root();
 
@@ -79,6 +138,8 @@ fn main() {
         entities::prelude::Agent::delete_many()
             .filter(agent::Column::Partial.eq(true).or(agent::Column::Removed.eq(true)))
             .exec(&db).await.unwrap();
+
+        cleanup_files(&db).await;
 
         let runner = Arc::new(GameRunner::new(game, "tic_tac_toe", 10, db).await);
 
