@@ -172,14 +172,6 @@ h2 {
     padding: 0;
 }
 
-.show-on-hover {
-    filter: blur(10px);
-}
-
-.show-on-hover:hover {
-    filter: brightness(1.0);
-}
-
 #log-status-container {
     position: absolute;
     display: flex;

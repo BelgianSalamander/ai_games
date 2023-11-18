@@ -3,5 +3,10 @@
         "title": "AI Games",
         "filename": "index",
         "heading": "Home Page"
+    },
+    "admin.html": {
+        "title": "Admin Panel",
+        "filename": "admin",
+        "heading": "Admin Controls"
     }
 }

@@ -18,19 +18,22 @@ function setPassword() {
     verifyPassword();
 }
 
+function onLoad() {
+    setInterval(updateProfileList, 1000);
+    updatePassword();
+}
+
 function verifyPassword() {
     const element = document.getElementById('admin-password-status');
     fetch('/admin/verify').then(response => {
         if (response.status === 200) {
             element.style.color = 'green';
             element.innerText = 'Password is correct';
-            document.getElementById('hidden-controls').style.display = 'block';
             authed = true;
             updateProfileList(true);
         } else {
             element.style.color = 'red';
             element.innerText = 'Password is incorrect';
-            document.getElementById('hidden-controls').style.display = 'none';
             authed = false;
         }
     });
@@ -45,8 +48,6 @@ function updatePassword() {
         element.value = password;
         verifyPassword();
     }
-
-    setInterval(updateProfileList, 1000);
 }
 
 function generateProfileTable(data) {
@@ -68,10 +69,10 @@ function generateProfileTable(data) {
 
         const username = document.createElement('td');
         const link = document.createElement('a');
-        link.href = `/public/profile.html?id=${profile.id}`;
+        link.href = `/pages/profile.html?id=${profile.id}`;
         link.innerText = profile.username;
 
-        link.style.color = "#fff";
+        link.style.color = "var(--dark-text)";
         link.style.textDecoration = "none";
 
         username.appendChild(link);

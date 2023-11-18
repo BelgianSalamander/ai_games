@@ -585,7 +585,7 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
     if req.matches_path(&["admin"]) {
         if !authenticate_admin(&req, &state) {
             Err(Response::basic_error(Status::Unauthorized, "Unauthorized"))
-        }else if req.matches_path_exact(&["admin", "new_profile"]) {
+        } else if req.matches_path_exact(&["admin", "new_profile"]) {
             let username = req.path.get("username")?;
 
             let other = entities::prelude::User::find()

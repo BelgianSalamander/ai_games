@@ -4,5 +4,53 @@
 }
 
 .profile-table table, tr, th, td {
-    border: 1px solid black;
+    text-align: center;
+}
+
+.profile-table {
+    margin-top: 15px;
+}
+
+.admin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    column-gap: 10px;
+    row-gap: 20px;
+}
+
+.admin-grid > * {
+    padding: 15px;
+    border-radius: 25px;
+}
+
+.admin-grid h2 {
+    margin-top: 0px;
+    margin-bottom: 5px;
+}
+
+#admin-password-input-container {
+    background-color: var(--colour-one);
+}
+
+#player-adder {
+    background-color: var(--colour-two);
+}
+
+#admin-powers {
+    background-color: var(--colour-three);
+    color: var(--light-text);
+}
+
+#player-list {
+    background-color: var(--colour-four);
+
+    grid-column-end: span 3;
+}
+
+.show-on-hover {
+    filter: blur(10px);
+}
+
+.show-on-hover:hover {
+    filter: brightness(1.0);
 }
