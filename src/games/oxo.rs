@@ -5,7 +5,7 @@ use proc_gamedef::make_server;
 
 use crate::{isolate::sandbox::RunningJob, games::{await_seconds, Waiter}};
 
-use super::{Game};
+use super::Game;
 
 #[derive(serde::Serialize)]
 pub struct TicTacToe;

@@ -484,35 +484,9 @@ impl HttpMessage {
 
             body[..body_in_buf].copy_from_slice(&buf[buf_pos..buf_pos + body_in_buf]);
 
-            buf_pos += body_in_buf;
-
             //Read remaining from stream
             stream.read_exact(&mut body[body_in_buf..]).await?;
         }
-
-        let cookies = headers
-            .get("Cookie")
-            .map(|cookie_header| {
-                let mut cookies = HashMap::new();
-
-                for cookie in cookie_header.split(';') {
-                    let mut cookie_parts = cookie.split('=');
-
-                    let key = match cookie_parts.next() {
-                        Some(key) => key,
-                        None => continue,
-                    };
-                    let value = match cookie_parts.next() {
-                        Some(value) => value,
-                        None => continue,
-                    };
-
-                    cookies.insert(key.trim().to_string(), value.trim().to_string());
-                }
-
-                cookies
-            })
-            .unwrap_or(HashMap::new());
 
         Ok(Self::new(lines[0].to_string(), headers, body))
     }

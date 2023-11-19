@@ -1,12 +1,11 @@
 use std::fs::File;
 use std::rc::Rc;
-use async_std::path::Path;
 use log::{trace, warn};
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 
 pub fn rand_str(len: usize) -> String {
-    let mut rng = rand::thread_rng();
+    let rng = rand::thread_rng();
     let name_bytes: Vec<u8> = rng.sample_iter(&Alphanumeric).take(len).collect();
     String::from_utf8_lossy(&name_bytes).to_string()
 }
@@ -54,7 +53,7 @@ impl TempFile {
             std::fs::create_dir("./tmp").unwrap();
         }
 
-        let mut rng = rand::thread_rng();
+        let rng = rand::thread_rng();
         let name_bytes: Vec<u8> = rng.sample_iter(&Alphanumeric).take(20).collect();
         let name = String::from_utf8_lossy(&name_bytes).to_string();
 

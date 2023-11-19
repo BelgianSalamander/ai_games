@@ -1,10 +1,9 @@
-use std::{sync::{Arc, atomic::{AtomicUsize, Ordering}}, time::Duration, collections::{HashMap, HashSet}};
+use std::{sync::Arc, time::Duration};
 
-use async_std::{sync::Mutex, fs::File};
 use deadpool::unmanaged::Pool;
 use gamedef::{game_interface::GameInterface, parser::parse_game_interface};
-use log::{debug, error, warn, info};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QueryOrder, sea_query::{Func, SimpleExpr}, QuerySelect, OrderedStatement, QueryTrait, ActiveValue, ActiveModelTrait, Value};
+use log::{debug, warn, info};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QueryOrder, sea_query::{Func, SimpleExpr}, QuerySelect, ActiveValue, ActiveModelTrait, Value};
 
 use crate::{
     games::Game, isolate::sandbox::IsolateSandbox, langs::{get_all_languages, language::Language}, util::{temp_file::{TempFile, random_file}, ActiveValueExtension, RUN_DIR}, entities::{agent, self},
@@ -121,7 +120,7 @@ impl<T: Game + 'static> GameRunner<T> {
 
             let mut sanboxes = vec![];
 
-            for i in 0..self.game.num_players() {
+            for _ in 0..self.game.num_players() {
                 if let Ok(sandbox) = self.sandboxes.try_get() {
                     sanboxes.push(sandbox);
                 } else {

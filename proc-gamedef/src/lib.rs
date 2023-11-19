@@ -168,13 +168,13 @@ fn make_deserializer(ty: &Type, instance: &str) -> String {
             let mut res = String::new();
             res.push_str("unsafe {");
 
-            res.push_str(&format!("let mut res: [{}; {}] = std::mem::uninitialized();\n", make_type_str(ty), count));
+            res.push_str(&format!("let mut res: [std::mem::MaybeUninit<{}>; {}] = std::mem::MaybeUninit::uninit().assume_init();\n", make_type_str(ty), count));
             
             res.push_str(&format!("for i in 0..{} {{\n", count));
-            res.push_str(&format!("res[i] = {};\n", make_deserializer(ty, instance)));
+            res.push_str(&format!("res[i].write({});\n", make_deserializer(ty, instance)));
             res.push_str("}\n");
 
-            res.push_str("res");
+            res.push_str(&format!("std::mem::transmute::<_, [{}; {}]>(res)", make_type_str(ty), count));
 
             res.push_str("}");
 
@@ -549,8 +549,6 @@ fn make_interface(itf: &GameInterface, span: &Span) -> TokenStream {
 
     res.extend_one(TokenTree::Group(Group::new(proc_macro::Delimiter::Brace, stream)));
 
-    println!("Generated interface: {}", res.to_string());
-
     res
 }
 
@@ -562,8 +560,6 @@ pub fn make_server(tokens: TokenStream) -> TokenStream {
     let call_file = span.source_file().path();
     let dir = call_file.parent().unwrap();
     let path= dir.join(path);
-
-    println!("Loading game def {:?}", path);
 
     let name = name.replace(" ", "_").replace("/", "_").replace(".", "_");
 

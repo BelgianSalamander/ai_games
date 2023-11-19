@@ -1,10 +1,9 @@
-use std::{path::Path, fmt::format};
+use std::path::Path;
 
 use async_std::path::PathBuf;
 use async_trait::async_trait;
 use deadpool::unmanaged::Pool;
-use gamedef::game_interface::{GameInterface, self};
-use rand::Rng;
+use gamedef::game_interface::GameInterface;
 
 use crate::{isolate::sandbox::{IsolateSandbox, RunningJob}, util::{temp_file::random_dir, RUN_DIR}};
 

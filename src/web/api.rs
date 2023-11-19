@@ -1,27 +1,18 @@
-use std::{
-    collections::HashMap, convert::Infallible, mem::MaybeUninit, net::SocketAddr, pin::pin,
-    sync::Arc, str::FromStr,
-};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
-use async_std::{
-    net::{TcpListener, TcpStream},
-    stream::Map,
-    sync::Mutex, path::Path,
-};
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
-use gamedef::game_interface::GameInterface;
-use log::{info, debug, error, warn};
+use async_std::{net::{TcpListener, TcpStream},path::Path,};
+use futures::AsyncReadExt;
+use log::{info, error, warn};
 use rand::Rng;
 use sea_orm::{DatabaseConnection, EntityTrait, ModelTrait, ActiveValue, ActiveModelTrait, QueryFilter, ColumnTrait};
-use serde_json::{json, Value, Number};
+use serde_json::{json, Value};
 
 use crate::{
     games::Game,
-    players::{auto_exec::GameRunner},
-    web::http::{Method, Request, Response, Status}, langs::{language::{Language, PreparedProgram}, get_all_languages}, entities::{self, user, agent}, util::{temp_file::random_file, RUN_DIR},
+    web::http::{Method, Request, Response, Status}, langs::{language::{Language, PreparedProgram}, get_all_languages}, entities::{self, user, agent}, util::{temp_file::random_file, RUN_DIR}, players::auto_exec::GameRunner,
 };
 
-use super::{profile::{Profile, AgentInfo, generate_password, get_num_agents}, http::HttpError, web_errors::{HttpResult, decode_utf8, parse_json, ValueCast, parse_json_as_object, HttpErrorMap}};
+use super::{profile::{generate_password, get_num_agents}, web_errors::{HttpResult, decode_utf8, ValueCast, parse_json_as_object, HttpErrorMap}};
 
 trait IgnoreResult {
     fn ignore(self);
@@ -104,7 +95,6 @@ pub struct AppState {
     executor: Arc<GameRunner<Box<dyn Game>>>,
     super_secret_admin_password: String,
     languages: Arc<Vec<Arc<dyn Language>>>,
-    itf: GameInterface,
     db: DatabaseConnection,
 
     page_engine: PageEngine
@@ -234,7 +224,7 @@ fn is_user_authenticated(req: &Request, profile: &entities::user::Model) -> bool
         Some(id) => {
             match id.parse::<i32>() {
                 Ok(id) => Some(id),
-                Err(e) => None
+                Err(_) => None
             }
         }
         None => None
@@ -258,7 +248,7 @@ async fn get_user(req: &Request, state: &AppState) -> Option<entities::user::Mod
         Some(id) => {
             match id.parse::<i32>() {
                 Ok(id) => Some(id),
-                Err(e) => None
+                Err(_) => None
             }
         }
         None => None
@@ -323,7 +313,7 @@ async fn get_profile_data(req: &Request, state: &AppState) -> HttpResult<Respons
         Some(id) => {
             match id.parse::<i32>() {
                 Ok(id) => Some(id),
-                Err(e) => None
+                Err(_) => None
             }
         }
         None => None
@@ -384,7 +374,7 @@ async fn get_profile_data(req: &Request, state: &AppState) -> HttpResult<Respons
     Ok(res)
 }
 
-async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResult<Response> {
+async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResult<Response> {
     if req.matches_path_exact(&[]) {
         let mut res = Response::new();
         res.set_status(Status::PermanentRedirect);
@@ -453,7 +443,7 @@ async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResul
             Some(id) => {
                 match id.parse::<i32>() {
                     Ok(id) => Some(id),
-                    Err(e) => None
+                    Err(_) => None
                 }
             }
             None => None
@@ -547,19 +537,6 @@ async fn route_get(addr: SocketAddr, req: Request, state: AppState) -> HttpResul
     }
 }
 
-fn make_user(profiles: &mut Vec<Profile>, username: &String, num_agents: usize) {
-    let mut rng = rand::thread_rng();
-    let id = loop {
-        let id = rng.gen_range(0..u32::MAX);
-
-        if !profiles.iter().any(|p| p.id == id) {
-            break id;
-        }
-    };
-
-    profiles.push(Profile::new(id, username.clone(), num_agents));
-}
-
 async fn reset_password(req: &Request, state: &AppState) -> HttpResult<Response> {
     let user = get_user(req, state).await;
 
@@ -581,7 +558,7 @@ async fn reset_password(req: &Request, state: &AppState) -> HttpResult<Response>
     Ok(res)
 }
 
-async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResult<Response>{
+async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpResult<Response>{
     if req.matches_path(&["admin"]) {
         if !authenticate_admin(&req, &state) {
             Err(Response::basic_error(Status::Unauthorized, "Unauthorized"))
@@ -803,7 +780,7 @@ fn generate_admin_password() -> String {
         .collect()
 }
 
-pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, itf: GameInterface, db: DatabaseConnection) -> std::io::Result<()> {
+pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, db: DatabaseConnection) -> std::io::Result<()> {
     let addr = SocketAddr::from(([0, 0, 0, 0], 42069));
 
     let listener = TcpListener::bind(addr).await.unwrap();
@@ -812,7 +789,6 @@ pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, itf: G
         executor,
         super_secret_admin_password: generate_admin_password(),
         languages: Arc::new(get_all_languages()),
-        itf,
         db,
         page_engine: PageEngine::load()
     };

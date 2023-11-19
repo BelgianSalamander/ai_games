@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use deadpool::unmanaged::Pool;
-use gamedef::game_interface::{GameInterface, self, EnumVariants, BuiltinType, Type, get_enum_variant_type, is_basic_enum};
+use gamedef::game_interface::{GameInterface, self, BuiltinType, Type, get_enum_variant_type, is_basic_enum};
 
-use crate::isolate::sandbox::{RunningJob, IsolateSandbox, LaunchOptions, DirMapping};
+use crate::isolate::sandbox::{RunningJob, IsolateSandbox, LaunchOptions};
 
 use super::{language::{Language, PreparedProgram}, files::ClientFiles};
 
@@ -22,7 +22,7 @@ pub fn type_as_inline_python(ty: &Type) -> String {
             BuiltinType::Str => "str".to_string(),
         },
         Type::NamedType(name) => name.clone(),
-        Type::Array(ty, len) => format!("List[{}]", type_as_inline_python(ty)),
+        Type::Array(ty, _) => format!("List[{}]", type_as_inline_python(ty)),
         Type::DynamicArray(ty) => format!("List[{}]", type_as_inline_python(ty)),
 
         _ => panic!("Cannot convert type {:?} to python inline type", ty),
@@ -87,7 +87,7 @@ fn write_encoder(ty: &Type, value: &str, indent: u32) -> String {
             BuiltinType::Str => format!("{}write_str({})", indent_str, value),
         },
         Type::NamedType(name) => format!("{}write_{}({})", indent_str, name, value),
-        Type::Array(ty, len) => {
+        Type::Array(ty, _) => {
             let inner = write_encoder(ty, "x", indent + 1);
 
             format!("{}for x in {}:\n{}", indent_str, value, inner)
@@ -403,7 +403,7 @@ impl Language for Python {
 
             func_call.push_str(&format!("{}(", name));
 
-            for (i, (name, ty)) in signature.args.iter().enumerate() {
+            for (i, (_, ty)) in signature.args.iter().enumerate() {
                 if i != 0 {
                     func_call.push_str(", ");
                 }
@@ -431,7 +431,7 @@ impl Language for Python {
         res
     }
 
-    async fn prepare(&self, src: &str, out: &mut PreparedProgram, game_interface: &GameInterface, _sandboxes: Pool<IsolateSandbox>) -> Result<(), String> {
+    async fn prepare(&self, src: &str, out: &mut PreparedProgram, _game_interface: &GameInterface, _sandboxes: Pool<IsolateSandbox>) -> Result<(), String> {
         out.add_src_file("game.py", src);
 
         Ok(())

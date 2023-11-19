@@ -4,13 +4,13 @@ use std::future::Future;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::process::ExitStatus;
-use std::{fmt::format, pin::Pin};
-use std::fs::File;
+use std::pin::Pin;
 use async_std::process::{Child, Command, Output, Stdio, ChildStdout, ChildStdin};
 use std::sync::{Arc, Mutex};
 use log::{debug, info, trace, warn};
 use crate::util::temp_file::TempFile;
 
+#[derive(Debug)]
 pub struct IsolateSandbox {
     box_id: u32,
     box_path: String
@@ -266,11 +266,11 @@ impl LaunchOptions {
         self
     }
 
-    pub fn map_dir<A: Into<String>, B: Into<String>>(mut self, internal: A, external: B) -> Self {
+    pub fn map_dir<A: Into<String>, B: Into<String>>(self, internal: A, external: B) -> Self {
         self.add_mapping(DirMapping::named(internal, external))
     }
 
-    pub fn map_full<A: Into<String>>(mut self, path: A) -> Self {
+    pub fn map_full<A: Into<String>>(self, path: A) -> Self {
         self.add_mapping(DirMapping::full(path))
     }
 
@@ -279,15 +279,15 @@ impl LaunchOptions {
         self
     }
 
-    pub fn inherit<A: Into<String>>(mut self, var: A) -> Self {
+    pub fn inherit<A: Into<String>>(self, var: A) -> Self {
         self.env_rule(EnvRule::Inherit(var.into()))
     }
 
-    pub fn set_env<A: Into<String>, B: Into<String>>(mut self, var: A, value: B) -> Self {
+    pub fn set_env<A: Into<String>, B: Into<String>>(self, var: A, value: B) -> Self {
         self.env_rule(EnvRule::SetValue(var.into(), value.into()))
     }
 
-    pub fn full_env(mut self) -> Self {
+    pub fn full_env(self) -> Self {
         self.env_rule(EnvRule::InheritAll)
     }
 }
@@ -308,7 +308,7 @@ pub struct RunningJob {
     stdin: Arc<Mutex<ChildStdin>>,
     stdout: Arc<Mutex<ChildStdout>>,
 
-    metafile: TempFile,
+    _metafile: TempFile,
     pub stderr: TempFile,
 
     killed: bool,
@@ -434,7 +434,7 @@ impl RunningJob {
             child,
             stdin,
             stdout,
-            metafile,
+            _metafile: metafile,
             stderr,
 
             killed: false,

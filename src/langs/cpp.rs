@@ -1,11 +1,8 @@
-use std::{fmt::format, fs::File};
-
 use async_trait::async_trait;
 use deadpool::unmanaged::Pool;
 use gamedef::game_interface::{
     get_enum_variant_type, is_basic_enum, BuiltinType, EnumVariants, StructFields, Type,
 };
-use sea_orm::sea_query::func;
 
 use crate::{
     isolate::sandbox::{
@@ -148,7 +145,7 @@ pub fn basic_enum_decl(variants: &EnumVariants, pretty: bool, name: Option<Strin
 
     res.push_str(&format!(": {} {{", variant_type));
 
-    for (idx, variant) in variants.iter().enumerate() {
+    for variant in variants.iter() {
         if pretty {
             res.push_str("\n    ")
         }
@@ -204,9 +201,7 @@ fn write_struct_decoder(
     out: &mut String,
     discriminant: &mut usize,
 ) {
-    let indent_str = "    ".repeat(indent);
-
-    for (idx, field) in fields.iter().enumerate() {
+    for field in fields.iter() {
         let field_name = &field.name;
         write_decoder(
             &field.ty,
@@ -231,7 +226,7 @@ pub fn write_decoder(
             out.push_str(&indent_str);
             out.push_str(&format!("readString({base_addr});\n"));
         }
-        Type::Builtin(builtin) => {
+        Type::Builtin(_) => {
             let name = type_as_inline_cpp(ty);
             out.push_str(&indent_str);
             out.push_str(&format!("readData<{name}>({base_addr});\n"));
@@ -427,7 +422,6 @@ fn write_encoder(
                 out.push_str("\n");
             }
         }
-        _ => {}
     }
 }
 
@@ -505,7 +499,7 @@ impl Language for CppLang {
             for (idx, (name, ty)) in signature.args.iter().enumerate() {
                 function_decl.push_str(&type_as_inline_cpp(ty));
 
-                let mut do_ref = match ty {
+                let do_ref = match ty {
                     Type::Builtin(BuiltinType::Str) => true,
                     Type::Builtin(_) => false,
                     _ => true,
@@ -675,7 +669,7 @@ int main(){
         &self,
         data_dir: &str,
         sandbox: &crate::isolate::sandbox::IsolateSandbox,
-        itf: &gamedef::game_interface::GameInterface,
+        _itf: &gamedef::game_interface::GameInterface,
     ) -> crate::isolate::sandbox::RunningJob {
         sandbox.launch(
             format!("{data_dir}/agent.o"), 

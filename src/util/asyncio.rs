@@ -1,4 +1,4 @@
-use std::{pin::{pin, Pin}, future::poll_fn, task::{Poll, Context}};
+use std::{pin::Pin, future::poll_fn, task::Poll};
 
 pub struct AsyncReaderWrapper<R: async_std::io::Read + Unpin> {
     reader: R

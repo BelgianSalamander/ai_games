@@ -1,14 +1,10 @@
-use async_std::{sync::Mutex};
-use isolate::sandbox::IsolateSandbox;
 use log::{info, debug};
 use proc_gamedef::make_server;
-use sea_orm::{DbErr, Database, EntityTrait, QueryFilter, ColumnTrait, DatabaseConnection};
+use sea_orm::{Database, EntityTrait, QueryFilter, ColumnTrait, DatabaseConnection};
 use util::DATABASE_URL;
-use std::{io::Write, path::{Path, PathBuf}, process::{Command, exit}, time::Duration, sync::Arc, env, collections::HashSet};
+use std::{path::{Path, PathBuf}, process::exit, sync::Arc, env, collections::HashSet};
 
-use gamedef::parser::parse_game_interface;
-
-use crate::{langs::{python::Python, language::{Language, PreparedProgram}, javascript::make_js_deserializers, cpp::CppLang}, games::{oxo::TicTacToe, Game}, util::{RUN_DIR}, players::{auto_exec::GameRunner}, web::api, entities::agent};
+use crate::{games::{oxo::TicTacToe, Game}, util::RUN_DIR, web::api, entities::agent, players::auto_exec::GameRunner};
 
 pub mod isolate;
 pub mod util;
@@ -19,10 +15,6 @@ pub mod web;
 pub mod entities;
 
 make_server!("../res/games/test_game.game");
-
-fn read_file(path: &str) -> String {
-    std::fs::read_to_string(path).unwrap()
-}
 
 fn ensure_root() {
     match env::var("USER") {
@@ -37,12 +29,6 @@ fn ensure_root() {
             }
         }
     }
-}
-
-async fn db_test() -> Result<(), DbErr> {
-    let db = Database::connect(DATABASE_URL).await?;
-
-    Ok(())
 }
 
 fn cleanup_from_path(path: &PathBuf, dont_delete: &HashSet<PathBuf>) -> bool {
@@ -138,10 +124,9 @@ fn main() {
 
         //Launch api on new thread
         let runner_copy = runner.clone();
-        let itf = runner.itf.clone();
         std::thread::spawn(move || {
             async_std::task::block_on(async {
-                api::launch_and_run_api(runner_copy, itf, db_copy).await.unwrap();
+                api::launch_and_run_api(runner_copy, db_copy).await.unwrap();
             });
         });
 

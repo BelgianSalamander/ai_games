@@ -156,6 +156,6 @@ pub fn parse_json_as_array(s: &str) -> HttpResult<Vec<Value>> {
 pub fn decode_utf8(bytes: Vec<u8>) -> HttpResult<String> {
     match String::from_utf8(bytes) {
         Ok(s) => Ok(s),
-        Err(e) => return Err(Response::basic_error(Status::BadRequest, "Couldn't decode string. All text should be UTF-8"))
+        Err(_) => return Err(Response::basic_error(Status::BadRequest, "Couldn't decode string. All text should be UTF-8"))
     }
 }

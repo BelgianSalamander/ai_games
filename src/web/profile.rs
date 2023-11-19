@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 use rand::seq::SliceRandom;
-use sea_orm::{DatabaseConnection, EntityTrait, QuerySelect, PaginatorTrait, QueryFilter, ColumnTrait};
+use sea_orm::{DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, ColumnTrait};
 
 use crate::{players::auto_exec::PlayerId, entities::{user, agent}};
 
@@ -21,7 +21,7 @@ lazy_static! {
 pub fn generate_password() -> String {
     let mut rng = rand::thread_rng();
 
-    let mut password = (0..4).map(|_| WORDS.choose(&mut rng).unwrap().clone()).collect::<Vec<_>>().join("-");
+    let password = (0..4).map(|_| WORDS.choose(&mut rng).unwrap().clone()).collect::<Vec<_>>().join("-");
 
     password
 }
