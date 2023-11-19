@@ -8,31 +8,32 @@ function login(username, password) {
         document.cookie = `id=${data.id}` + extra;
         document.cookie = `password=${password}` + extra;
 
-        window.location = `/public/profile.html?id=${data.id}`;
+        window.location = `/pages/profile.html?id=${data.id}`;
     });
 }
 
 function tryLogin() {
-    const username = document.getElementById("username").value;
-    const password = document.getElementById("password").value;
+    console.log("Trying to log in!");
+    const username = document.getElementById("username-input").value;
+    const password = document.getElementById("password-input").value;
 
-    const result = document.getElementById("result");
+    const feedback = document.getElementById("feedback");
 
     fetch(`/api/auth?username=${username}&password=${password}`).then(res => {
         if (res.status == 404) {
-            result.style.color = 'red';
-            result.innerText = "Incorrect Username";
+            feedback.style.color = 'red';
+            feedback.innerText = "Incorrect Username";
         } else if (res.status != 200) {
-            result.style.color = 'red';
-            result.innerText = "Error";
+            feedback.style.color = 'red';
+            feedback.innerText = "Error";
         } else {
             res.json().then(data => {
                 if (!data.correct) {
-                    result.style.color = 'red';
-                    result.innerText = "Incorrect Password";
+                    feedback.style.color = 'red';
+                    feedback.innerText = "Incorrect Password";
                 } else {
-                    result.style.color = 'green';
-                    result.innerText = "Correct";
+                    feedback.style.color = 'green';
+                    feedback.innerText = "Correct";
                     login(username, password);
                 }
             })
