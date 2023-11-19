@@ -27,7 +27,7 @@ function verifyPassword() {
     const element = document.getElementById('admin-password-status');
     fetch('/admin/verify').then(response => {
         if (response.status === 200) {
-            element.style.color = 'green';
+            element.style.color = '#555';
             element.innerText = 'Password is correct';
             authed = true;
             updateProfileList(true);
@@ -50,11 +50,19 @@ function updatePassword() {
     }
 }
 
+function fullReset() {
+    if (confirm("Are you sure you want to reset everything? This action is irreversible!")) {
+        fetch(`/admin/full_reset`, {
+            method: 'POST'
+        });
+    }
+}
+
 function generateProfileTable(data) {
     table = document.getElementById('profile-list');
     table.innerHTML = '';
 
-    const HEADERS = ['Username', 'Password', 'Id', 'No. Agents', 'Controls'];
+    const HEADERS = ['Id', 'Username', 'Password', 'No. Agents', 'Controls'];
 
     const headerRow = document.createElement('tr');
     for (const header of HEADERS) {
@@ -67,7 +75,12 @@ function generateProfileTable(data) {
     for (const profile of data) {
         const row = document.createElement('tr');
 
+        const id = document.createElement('td');
+        id.innerText = profile.id;
+        row.appendChild(id);
+
         const username = document.createElement('td');
+        username.style.alignContent = "left";
         const link = document.createElement('a');
         link.href = `/pages/profile.html?id=${profile.id}`;
         link.innerText = profile.username;
@@ -84,10 +97,6 @@ function generateProfileTable(data) {
         password.classList.add('show-on-hover');
         passwordContainer.appendChild(password);
         row.appendChild(passwordContainer);
-
-        const id = document.createElement('td');
-        id.innerText = profile.id;
-        row.appendChild(id);
 
         const agentsContainer = document.createElement('td');
         const agents = document.createElement('input');

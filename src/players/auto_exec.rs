@@ -63,7 +63,7 @@ impl<T: Game + 'static> GameRunner<T> {
         let pool = Pool::new(num_sandboxes);
 
         for i in 0..num_sandboxes {
-            pool.add(IsolateSandbox::new(i as u32).await).await;
+            pool.add(IsolateSandbox::new(i as u32).await).await.unwrap();
         }
 
         //Set all agents to not in_game
@@ -170,7 +170,6 @@ impl<T: Game + 'static> GameRunner<T> {
                         let stderr_contents = agents[i].read_stderr(Some(MAX_READ)).await;
                         let displayed_error = format!("Error: {}\nStderr:\n{}", err, stderr_contents);
 
-                        //TODO: Don't use a temp file cause it shoudl persist (this goes for a lot of other things as well). Current workaround is to freeze
                         let stderr_store = random_file(RUN_DIR, ".error");
                         async_std::fs::write(stderr_store.clone(), displayed_error.clone()).await.unwrap();
 

@@ -10,7 +10,7 @@ use async_std::{
 };
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 use gamedef::game_interface::GameInterface;
-use log::{info, debug, error};
+use log::{info, debug, error, warn};
 use rand::Rng;
 use sea_orm::{DatabaseConnection, EntityTrait, ModelTrait, ActiveValue, ActiveModelTrait, QueryFilter, ColumnTrait};
 use serde_json::{json, Value, Number};
@@ -649,6 +649,15 @@ async fn route_post(addr: SocketAddr, req: Request, state: AppState) -> HttpResu
             } else {
                 Err(Response::basic_error(Status::NotFound, "User id not found"))
             }
+        } else if req.matches_path_exact(&["admin", "full_reset"]) {
+            warn!("Doing full reset!");
+
+            entities::agent::Entity::delete_many().exec(&state.db).await.unwrap();
+            entities::user::Entity::delete_many().exec(&state.db).await.unwrap();
+
+            let mut res = Response::new();
+            res.set_status(Status::Ok);
+            Ok(res)
         } else {
             Err(Response::basic_error(Status::NotFound, "Not found"))
         }

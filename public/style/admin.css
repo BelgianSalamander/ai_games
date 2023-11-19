@@ -4,7 +4,7 @@
 }
 
 .profile-table table, tr, th, td {
-    text-align: center;
+    text-align: left;
 }
 
 .profile-table {
@@ -20,7 +20,7 @@
 
 .admin-grid > * {
     padding: 15px;
-    border-radius: 25px;
+    border-radius: 15px;
 }
 
 .admin-grid h2 {
