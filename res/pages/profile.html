@@ -1,32 +1,21 @@
-<!DOCTYPE html>
-<html lang="en">
-    <head>
-        <title id = "title">Profile</title>
-        <link rel="stylesheet" href="style/global.css">
-        <link rel="stylesheet" href="style/profile.css">
-        <script src="script/common.js"></script>
-        <script src="script/profile.js"></script>
-    </head>
-    <body onload = "commonLoad();onLoad()">
-        <header>
-            <h1 id = "page-title">[USER]'s Profile</h1>
-        </header>
-        <main>
-            Username: <span id = "username"></span><br>
-            User ID: <span id = "user-id"></span><br>
+<div class="profile-grid">
+    <div id="user-general-info" style="background-color: var(--colour-one);">
+        <h2>General Info</h2>
+        <span id="user-username">Username: </span><br>
+        <span id="user-ranking">Ranking: </span>
+    </div>
 
-            <div id = "password-reset-container" style = "display:none;">
-                <button id = "password-reset" onclick = "resetPassword()">Reset Password</button>
-                <label id = "new-password" class = "show-on-hover"></label>
-            </div>
+    <div id="player-adder" style="background-color: var(--colour-two);">
+        <h2>Statistics</h2>
+        <span id="user-best-agent">Best Agent Rating: </span><br>
+        <span id="user-active-agents">Active Agents: </span><br>
+        <span id = "user-total-games">Total Games Played: </span>
+    </div>
+</div>
+<div id="hidden-info" style="display: none;">
+    <h2>Your Agents</h2>
+    <div id="agent-grid">
 
-            <div id = "profile-agents-container" style = "display:none;">
-                <h2>Agents</h2>
-                <div id = "agent-list">
-                    
-                </div>
-                <a href = "/public/submit.html">Submit new agent</a>
-            </div>
-        </main>
-    </body>
-</html>
+    </div>
+    <a href="/pages/submit.html" style="color:black;font-weight: bold;">Submit New Agent</a>
+</div>

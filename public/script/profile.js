@@ -40,9 +40,7 @@ function onLoad() {
     id = urlParams.get('id');
 
     const titleElement = document.getElementById('title');
-    const pageTitleElement = document.getElementById('page-title');
-
-    pageTitleElement.innerText = id + "'s Profile";
+    const pageTitleElement = document.getElementById('page-heading');
 
     fetch(`/api/profile?id=${id}`).then(response => response.json()).then(profile => {
         fetch("/api/lang").then(res => res.json()).then(langs => {
@@ -54,34 +52,76 @@ function onLoad() {
 
             const username = profile.username;
             titleElement.innerText = "Profile - " + username;
+            pageTitleElement.innerText = username + "'s Profile";
 
             if (profile.privileged) {
-                const nameSpan = document.createElement('span');
-                nameSpan.innerText = username;
-                nameSpan.style.color = 'green';
+                const hidden = document.getElementById("hidden-info");
+                hidden.style.display = "block";
 
-                const otherSpan = document.createElement('span');
-                otherSpan.innerText = "'s Profile";
-
-                pageTitleElement.innerHTML = '';
-                pageTitleElement.appendChild(nameSpan);
-                pageTitleElement.appendChild(otherSpan);
-
-                document.getElementById('password-reset-container').style.display = 'block';
-
-                let agent_list_container = document.getElementById("profile-agents-container");
-                agent_list_container.style.display = 'block';
-                let agent_list = document.getElementById("agent-list");
+                const agentGrid = document.getElementById("agent-grid");
 
                 for (agent of profile.agents) {
-                    agent_list.appendChild(makeAgentElement(agent, lang_map));
-                }
-            } else {
-                pageTitleElement.innerText = username + "'s Profile";
-            }
+                    const container = document.createElement("div");
+                    container.classList.add("agent-container");
 
-            document.getElementById('username').innerText = username;
-            document.getElementById('user-id').innerText = profile.id;
+                    const nameLink = document.createElement("a");
+                    nameLink.classList.add("agent-name-link");
+                    nameLink.href = `/pages/agent.html?agent=${agent.id}`;
+
+                    const nameElement = document.createElement("h3");
+                    nameElement.classList.add("agent-name");
+                    nameElement.innerText = agent.name;
+
+                    nameLink.appendChild(nameElement);
+                    container.appendChild(nameLink);
+
+                    const languageElement = document.createElement("span");
+                    languageElement.classList.add("agent-language");
+                    if (agent.language in lang_map) {
+                        languageElement.innerText = "Written in " + lang_map[agent.language];
+                    } else {
+                        languageElement.innerText = "Written in " + agent.language;
+                    }
+                    container.appendChild(languageElement);
+
+                    const statusElement = document.createElement("span");
+                    statusElement.classList.add("agent-status");
+                    let displayStatus = false;
+
+                    if (agent.partial && agent.removed) {
+                        statusElement.classList.add("agent-status-compile-error");
+                        statusElement.innerText = "Compile Error";
+                        displayStatus = true;
+                    } else if (agent.partial) {
+                        statusElement.classList.add("agent-status-compiling");
+                        statusElement.innerText = "Compiling...";
+                        displayStatus = true;
+                    } else if (agent.removed) {
+                        statusElement.classList.add("agent-status-error");
+                        statusElement.innerText = "Runtime Error";
+                        displayStatus = true;
+                    }
+
+                    if (displayStatus) {
+                        container.appendChild(document.createElement("br"));
+                        container.appendChild(statusElement);
+                    } else {
+                        const rating = document.createElement("span");
+                        rating.classList.add("agent-rating");
+                        rating.innerText = "Rating: " + agent.rating;
+                        container.appendChild(document.createElement("br"));
+                        container.appendChild(rating);
+
+                        const gameCount = document.createElement("span");
+                        gameCount.classList.add("agent-game-count");
+                        gameCount.innerText = "Played " + agent.games_played + " games";
+                        container.appendChild(document.createElement("br"));
+                        container.appendChild(gameCount);
+                    }
+
+                    agentGrid.appendChild(container);
+                }
+            }
         });
     });
 }
