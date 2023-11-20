@@ -1,18 +1,29 @@
-<!DOCTYPE html>
-<html lang="en">
-    <head>
-        <title id = "title">Agent</title>
-        <link rel="stylesheet" href="style/global.css">
-        <link rel="stylesheet" href="style/agent.css">
-        <script src="script/common.js"></script>
-        <script src="script/agent.js"></script>
-    </head>
-    <body onload = "commonLoad();onLoad()">
-        <header>
-            <h1 id = "page-title">[AGENT]</h1>
-        </header>
-        <main>
-            
-        </main>
-    </body>
-</html>
+<div class="agent-grid">
+    <div id="agent-general-info" style="background-color: var(--colour-one);">
+        <h2>General Info</h2>
+        <span id="agent-name">Name: </span><br>
+        <span id="agent-language">Language: </span><br>
+        <span id="agent-owner">Owned by: <a id="agent-owner-link"></a></span>
+    </div>
+
+    <div id="agent-statistics" style="background-color: var(--colour-two);">
+        <h2>Statistics</h2>
+        <span id="agent-rating">Agent Rating: </span><br>
+        <span id="agent-games-played">Num Games Played: </span>
+    </div>
+
+    <div id="agent-status-container" style="background-color: var(--colour-four);">
+        <h2>Agent Status</h2>
+        <span id="agent-status" class="agent-status"></span>
+    </div>
+</div>
+
+<div id="agent-error" style="display: none;">
+    <h2>Agent Error</h2>
+    <pre class="code-display"><code id = "agent-error-display" ></code></pre>
+</div>
+
+<div id="agent-source" style="display: none;">
+    <h2>Agent Source</h2>
+    <pre class="code-display"><code id = "agent-source-display"></code></pre>
+</div>

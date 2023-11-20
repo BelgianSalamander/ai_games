@@ -4,14 +4,12 @@ function onLoad() {
     agent_id = urlParams.get('agent');
 
     const titleElement = document.getElementById('title');
-    const pageTitleElement = document.getElementById('page-title');
+    const pageHeadingElement = document.getElementById('page-heading');
 
-    pageTitleElement.innerText = "Agent " + agent_id
-
-    const main = document.getElementsByTagName("main")[0];
+    pageHeadingElement.innerText = "Agent " + agent_id
 
     fetch(`/api/agent?agent=${agent_id}&error=true&src=true`).then(response => response.json()).then(agent => {
-        fetch("/api/lang").then(res => res.json()).then(langs => {
+        fetch("/api/lang", {"cache": "force-cache"}).then(res => res.json()).then(langs => {
             lang_map = {};
 
             for (lang of langs) {
@@ -19,66 +17,58 @@ function onLoad() {
             }
 
             titleElement.innerText = "Agent - " + agent.name;
-            pageTitleElement.innerText = "Agent - " + agent.name;
+            pageHeadingElement.innerText = "Agent - " + agent.name;
+
+            document.getElementById("agent-name").innerText = "Name: '" + agent.name + "'";
+
+            let language = agent.language;
+            if (language in lang_map) {
+                language = lang_map[language];
+            }
+            document.getElementById("agent-language").innerText = "Written in " + language;
 
             if ("owner" in agent) {
-                let owner = document.createElement("span");
-                owner.innerText = "Owned by ";
-
-                let owner_link = document.createElement("a")
-                owner_link.href = "/public/profile.html?id=" + agent.owner_id;
+                const ownerLink = document.getElementById("agent-owner-link");
+                ownerLink.href = "/pages/profile.html?id=" + agent.owner_id;
                 if (agent.owner_id == getCookie("id")) {
-                    owner_link.innerText = "you!";
+                    ownerLink.innerText = "you!";
                 } else {
-                    owner_link.innerText = agent.owner;
+                    ownerLink.innerText = agent.owner;
                 }
-                owner.appendChild(owner_link);
-
-                main.appendChild(owner);
-                main.appendChild(document.createElement("br"));
+            } else {
+                document.getElementById("agent-owner").style.display = "none";
             }
 
-            let language = document.createElement("span");
-            language.innerText = "Written in " + lang_map[agent.language];
-            main.appendChild(language);
+            document.getElementById("agent-rating").innerText = "Rating: " + Math.round(agent.rating);
+            document.getElementById("agent-games-played").innerText = "Num Games Played: " + agent.games_played;
 
-            main.appendChild(document.createElement("br"));
+            let status, statusClass;
+            if (agent.removed && agent.partial) {
+                status = "Compile Error";
+                statusClass = "agent-status-compile-error";
+            } else if (agent.removed) {
+                status = "Runtime Error";
+                statusClass = "agent-status-error";
+            } else if (agent.partial) {
+                status = "Compiling...";
+                statusClass = "agent-status-compiling";
+            } else {
+                status = "Ok!";
+                statusClass = "agent-status-alg";
+            }
 
-            let rating = document.createElement("span");
-            rating.innerText = "Rating: " + Math.round(agent.rating);
-            main.appendChild(rating);
+            const statusElement = document.getElementById("agent-status");
+            statusElement.innerText = status;
+            statusElement.classList.add(statusClass);
 
-            if (agent.removed) {
-                main.appendChild(document.createElement("br"));
-
-                let removed = document.createElement("span");
-                removed.innerText = "Agent was removed";
-                removed.style.color = "red";
-                main.appendChild(removed);
-
-                main.appendChild(document.createElement("br"));
-
-                if ("error" in agent) {
-                    let error = agent.error;
-
-                    let pre = document.createElement("pre");
-                    pre.style.backgroundColor = "#454b45";
-                    let e = document.createElement("code");
-                    e.innerText = error;
-                    pre.appendChild(e);
-                    main.appendChild(pre);
-                }
+            if ("error" in agent) {
+                document.getElementById("agent-error").style.display = "block";
+                document.getElementById("agent-error-display").innerText = agent.error;
             }
 
             if ("src" in agent) {
-                let src = agent.src;
-
-                let pre = document.createElement("pre");
-                pre.style.backgroundColor = "#454b45";
-                let e = document.createElement("code");
-                e.innerText = src;
-                pre.appendChild(e);
-                main.appendChild(pre);
+                document.getElementById("agent-source").style.display = "block";
+                document.getElementById("agent-source-display").innerText = agent.src;
             }
         });
     });

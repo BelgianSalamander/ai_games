@@ -23,5 +23,10 @@
         "title": "SAIS Leaderboard",
         "filename": "leaderboard",
         "heading": "Agent Leaderboard"
+    },
+    "agent.html": {
+        "title": "Agent Profile",
+        "filename": "agent",
+        "heading": "Agent"
     }
 }
