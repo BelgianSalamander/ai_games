@@ -239,6 +239,7 @@ impl Language for Python {
         let mut interactor = String::new();
 
         interactor.push_str("from interact_lib import *\n");
+        interactor.push_str("from game_types import *\n");
         interactor.push_str("from game import *\n\n");
 
         for (name, ty) in &game_interface.types {
