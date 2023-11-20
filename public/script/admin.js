@@ -58,6 +58,28 @@ function fullReset() {
     }
 }
 
+function resetAgents() {
+    if (confirm("Are you sure you want to delete all agents? This action is irreversible!")) {
+        fetch(`/admin/agents_reset`, {
+            method: 'POST'
+        });
+    }
+}
+
+function resetRatings() {
+    if (confirm("Are you sure you want to reset all ratings? This action is irreversible!")) {
+        fetch(`/admin/ratings_reset`, {
+            method: 'POST'
+        });
+    }
+}
+
+function fileCleanup() {
+    fetch(`/admin/file_cleanup`, {
+        method: 'POST'
+    });
+}
+
 function generateProfileTable(data) {
     table = document.getElementById('profile-list');
     table.innerHTML = '';

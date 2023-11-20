@@ -62,7 +62,7 @@ fn cleanup_from_path(path: &PathBuf, dont_delete: &HashSet<PathBuf>) -> bool {
     }
 }
 
-async fn cleanup_files(db: &DatabaseConnection) {
+pub async fn cleanup_files(db: &DatabaseConnection) {
     info!("Cleaning up files!");
     let target_dirs = vec!["./run"];
 

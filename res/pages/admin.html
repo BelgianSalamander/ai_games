@@ -19,9 +19,9 @@
     <div id="admin-powers">
         <h2>Admin Powers</h2>
         <button id="reset-all" onclick="fullReset();">Reset All</button>
-        <button id="reset-agents">Delete All Agents</button>
-        <button id="reset-rating">Reset Rating</button>
-        <button id="cleanup">File Cleanup</button>
+        <button id="reset-agents" onclick="resetAgents();">Delete All Agents</button>
+        <button id="reset-rating" onclick="resetRatings();">Reset Rating</button>
+        <button id="cleanup" onclick="fileCleanup();">File Cleanup</button>
     </div>
 
     <div id="player-list">
@@ -31,22 +31,3 @@
         </table>
     </div>
 </div>
-
-<!--
-
-<div id="hidden-controls" style="display:none;">
-    <h3>Profiles</h3>
-    <div>
-        <table id="profile-list" class="profile-table">
-
-        </table>
-    </div>
-    <h3>Add new profile</h3>
-    <div>
-        <input placeholder="Username" type="text" id="new-profile-username">
-        <input placeholder="No. Agents" type="number" id="new-profile-agents" min="0">
-        <button id="profile-add" onclick="addProfile()">Add</button>
-        <label id="new-profile-status"></label>
-    </div>
-</div>
--->

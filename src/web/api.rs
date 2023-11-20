@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 use crate::{
     games::Game,
-    web::http::{Method, Request, Response, Status}, langs::{language::{Language, PreparedProgram}, get_all_languages}, entities::{self, user, agent}, util::{temp_file::random_file, RUN_DIR}, players::auto_exec::GameRunner,
+    web::http::{Method, Request, Response, Status}, langs::{language::{Language, PreparedProgram}, get_all_languages}, entities::{self, user, agent}, util::{temp_file::random_file, RUN_DIR}, players::auto_exec::GameRunner, cleanup_files,
 };
 
 use super::{profile::{generate_password, get_num_agents}, web_errors::{HttpResult, decode_utf8, ValueCast, parse_json_as_object, HttpErrorMap}};
@@ -631,6 +631,36 @@ async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpRes
 
             entities::agent::Entity::delete_many().exec(&state.db).await.unwrap();
             entities::user::Entity::delete_many().exec(&state.db).await.unwrap();
+
+            let mut res = Response::new();
+            res.set_status(Status::Ok);
+            Ok(res)
+        } else if req.matches_path_exact(&["admin", "agents_reset"]) {
+            warn!("Deleting all agents!");
+
+            entities::agent::Entity::delete_many().exec(&state.db).await.unwrap();
+
+            let mut res = Response::new();
+            res.set_status(Status::Ok);
+            Ok(res)
+        } else if req.matches_path_exact(&["admin", "ratings_reset"]) {
+            warn!("Resetting rating!");
+
+            let active = agent::ActiveModel {
+                rating: ActiveValue::Set(1000.0),
+                ..Default::default()
+            };
+
+            entities::agent::Entity::update_many()
+                .set(active)
+                .exec(&state.db)
+                .await.unwrap();
+
+            let mut res = Response::new();
+            res.set_status(Status::Ok);
+            Ok(res)
+        } else if req.matches_path_exact(&["admin", "file_cleanup"]) {
+            cleanup_files(&state.db).await;
 
             let mut res = Response::new();
             res.set_status(Status::Ok);
