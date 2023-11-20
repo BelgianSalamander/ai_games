@@ -4,8 +4,8 @@ use async_std::{net::{TcpListener, TcpStream},path::Path,};
 use futures::AsyncReadExt;
 use log::{info, error, warn};
 use rand::Rng;
-use sea_orm::{DatabaseConnection, EntityTrait, ModelTrait, ActiveValue, ActiveModelTrait, QueryFilter, ColumnTrait};
-use serde_json::{json, Value};
+use sea_orm::{DatabaseConnection, EntityTrait, ModelTrait, ActiveValue, ActiveModelTrait, QueryFilter, ColumnTrait, QueryOrder};
+use serde_json::{json, Value, map::Values};
 
 use crate::{
     games::Game,
@@ -100,17 +100,29 @@ pub struct AppState {
     page_engine: PageEngine
 }
 
-async fn get_all_players(state: AppState) -> String {
+async fn get_agent_leaderboard(state: AppState) -> String {
     let mut json = Vec::new();
 
-    for agent in entities::prelude::Agent::find().all(&state.db).await.unwrap() {
-        let val = json!({
+    let data = entities::prelude::Agent::find()
+        .filter(agent::Column::Removed.eq(false))
+        .filter(agent::Column::Partial.eq(false))
+        .order_by_desc(agent::Column::Rating)
+        .find_also_related(user::Entity)
+        .all(&state.db).await.unwrap();
+
+
+    for (agent, maybe_owner) in data {
+        let mut val = json!({
             "id": agent.id,
             "name": agent.name,
             "rating": agent.rating as i32,
-            "removed": agent.removed,
-            "in_game": agent.in_game
+            "games_played": agent.num_games
         });
+
+        if let Some(owner) = maybe_owner {
+            val["owner_id"] = json!(owner.id);
+            val["owner"] = json!(owner.username);
+        }
 
         json.push(val);
     }
@@ -418,11 +430,11 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         let path = req.path.path[1..].join("/");
 
         serve_file_to(&path).await
-    } else if req.matches_path_exact(&["api", "players"]) {
+    } else if req.matches_path_exact(&["api", "agent_leaderboard"]) {
         let mut res = Response::new();
         res.set_status(Status::Ok);
         res.set_header("Content-Type", "application/json");
-        res.set_body(get_all_players(state).await.into_bytes());
+        res.set_body(get_agent_leaderboard(state).await.into_bytes());
 
         Ok(res)
     } else if req.matches_path_exact(&["api", "profile"]) {

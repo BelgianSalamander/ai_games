@@ -108,7 +108,7 @@ function onLoad() {
                     } else {
                         const rating = document.createElement("span");
                         rating.classList.add("agent-rating");
-                        rating.innerText = "Rating: " + agent.rating;
+                        rating.innerText = "Rating: " + Math.round(agent.rating);
                         container.appendChild(document.createElement("br"));
                         container.appendChild(rating);
 

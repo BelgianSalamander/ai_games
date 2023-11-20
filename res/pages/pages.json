@@ -18,5 +18,10 @@
         "title": "Sumbit New Agent",
         "filename": "submit",
         "heading": "Submit New Agent"
+    },
+    "leaderboard.html": {
+        "title": "SAIS Leaderboard",
+        "filename": "leaderboard",
+        "heading": "Agent Leaderboard"
     }
 }

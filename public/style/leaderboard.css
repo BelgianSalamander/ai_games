@@ -1,0 +1,23 @@
+#leaderboard-container {
+    width: 100%;
+    box-sizing: border-box;
+
+    background-color: var(--colour-four);
+
+    padding: 10px;
+    border-radius: 15px;
+}
+
+#leaderboard {
+    width: 100%;
+}
+
+#leaderboard table, tr, th, td {
+    text-align: left;
+}
+
+.agent-name-link, .agent-owner-link {
+    color: #333;
+    text-decoration: none;
+    font-weight: 300;
+}
