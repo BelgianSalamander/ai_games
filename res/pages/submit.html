@@ -1,25 +1,17 @@
-<!DOCTYPE html>
-<html lang="en">
-    <head>
-        <title id = "title">Submit Agent</title>
-        <link rel="stylesheet" href="style/global.css">
-        <link rel="stylesheet" href="style/submit.css">
-        <script src="script/common.js"></script>
-        <script src="script/submit.js"></script>
-    </head>
-    <body onload = "commonLoad();onLoad()">
-        <header>
-            <h1 id = "page-title">Submit New Agent</h1>
-        </header>
-        <main>
-            Agent Name: <input id = "agent-name" type="text" placeholder="Agent Name"><br>
-            Source Language: <select id = "agent-language" name="agent-language"></select><br>
-            Source<br>
-            <textarea id = "agent-source"></textarea>
-            <button id = "submit-button" onclick="submit()">
-                Submit
-            </button>
-            <span id="feedback" style="color:red"></span>
-        </main>
-    </body>
-</html>
+<span id="feedback"></span>
+
+<div id="agent-info">
+    <input id="agent-name" type="text" placeholder="Agent Name">
+    <select id="agent-language" name="agent-language">
+        <option value="" disabled selected>Agent Language</option>
+    </select>
+</div>
+
+<div id="source-area">
+    <h2>Source Code</h2>
+    <textarea id="source-code" autocomplete="off" spellcheck="false"></textarea>
+</div>
+
+<div style="display:flex;flex-direction:column;align-content:center;">
+    <button id="submit" onclick="submit();">Submit</button>
+</div>

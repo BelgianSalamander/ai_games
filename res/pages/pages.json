@@ -8,5 +8,15 @@
         "title": "Admin Panel",
         "filename": "admin",
         "heading": "Admin Controls"
+    },
+    "profile.html": {
+        "title": "User Profile",
+        "filename": "profile",
+        "heading": "User Profile"
+    },
+    "submit.html": {
+        "title": "Sumbit New Agent",
+        "filename": "submit",
+        "heading": "Submit New Agent"
     }
 }

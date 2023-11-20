@@ -44,11 +44,24 @@ function makeLoggedOut(menu) {
     menu.appendChild(login);
 }
 
+let profileObject = null;
+let profileCallbacks = [];
+
+function withProfile(f) {
+    if (profileObject) {
+        f(profileObject);
+    } else {
+        profileCallbacks.push(f);
+    }
+}
+
 function makeLoggedIn(menu, id) {
     fetch(`/api/profile?id=${id}`).then(res => res.json()).then(data => {
+        profileObject = data;
+
         const username = document.createElement("a");
         username.innerText = data.username;
-        username.href = `/public/profile.html?id=${id}`
+        username.href = `/pages/profile.html?id=${id}`
 
         username.style.textDecoration = "none";
         username.style.fontWeight = "bold";
@@ -76,6 +89,10 @@ function makeLoggedIn(menu, id) {
         }
         
         menu.appendChild(logout);
+
+        for (f of profileCallbacks) {
+            f(data);
+        }
     });
 }
 

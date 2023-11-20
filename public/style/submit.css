@@ -1,4 +1,82 @@
-#agent-source {
+#agent-info {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+
+    column-gap: 10px;
+
+    margin-bottom: 10px;
+}
+
+#agent-name {
+    padding: 5px;
+    border: none;
+    text-align: center;
+    font-size: 25px;
+    border-radius: 15px;
+
+    background-color: var(--colour-one);
+}
+
+#agent-language {
+    padding: 5px;
+    border: none;
+    text-align: center;
+    font-size: 25px;
+    border-radius: 15px;
+
+    background-color: var(--colour-two);
+}
+
+#source-area {
+    background-color: var(--colour-four);
     width: 100%;
-    height:500px;
+    border-radius: 15px;
+    padding: 10px;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+}
+
+#source-area h2 {
+    margin-top: 0;
+}
+
+#source-code {
+    width: 100%;
+    height: 50vh;
+    box-sizing: border-box;
+
+    background-color:white;
+    border: none;
+    font-size: 1.2em;
+    font-family:'Courier New', Courier, monospace;
+    resize: none;
+}
+
+#submit {
+    margin: auto;
+    padding: 10px;
+    background-color: #a6a1d4;
+    border: none;
+    font-size: 25px;
+    border-radius: 15px;
+    cursor: pointer;
+}
+
+#submit:hover {
+    background-color: var(--colour-three);
+}
+
+#feedback {
+    display: block;
+
+    text-align: center;
+    padding-bottom: 5px;
+    font-size: 25px;
+    color: red;
+    font-weight: bold;
+
+    width: 100%;
+    box-sizing: border-box;
+
+    margin-top: -10px;
 }

@@ -13,11 +13,26 @@ function onLoad() {
 }
 
 function submit() {
-    let name = document.getElementById("agent-name").value;
+    let name = document.getElementById("agent-name").value.trim();
     let language = document.getElementById("agent-language").value;
-    let source = document.getElementById("agent-source").value;
+    let source = document.getElementById("source-code").value.trim();
 
-    if (name.length === 0 || source.length === 0) return;
+    let feedback = document.getElementById("feedback");
+    feedback.innerText = "";
+
+    if (name.length === 0) {
+        feedback.innerText = "Please enter a name!";
+        return;
+    }
+
+    if (language.length === 0) {
+        feedback.innerText = "Please select a language!";
+        return;
+    }
+
+    if (source.length === 0) {
+        feedback.innerText = "Please provide source code!";
+    }
 
     console.log(name, language, source);
 
@@ -27,16 +42,13 @@ function submit() {
         "name": name
     };
 
-    let feedback = document.getElementById("feedback");
-    feedback.innerText = "";
-
     fetch(`/api/add_agent?id=${getCookie("id")}`, {
         "method": "POST",
         "body": JSON.stringify(body)
     }).then(d => {
         if (d.status == 200) {
             d.json().then(data => {
-                window.location = `/public/agent.html?agent=${data['agent_id']}`;
+                window.location = `/pages/agent.html?agent=${data['agent_id']}`;
             })
         } else {
             d.text().then(error => {
