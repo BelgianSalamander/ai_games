@@ -158,7 +158,7 @@ impl<T: Game + 'static> GameRunner<T> {
 
             async_std::task::spawn(async move {
                 info!("Starting a game!");
-                let results = game_copy.run(&mut agents, None).await;
+                let results = game_copy.run(&mut agents, Some(Duration::from_millis(500))).await;
 
                 let mut players: Vec<entities::agent::ActiveModel> = players.into_iter().map(|p| p.into()).collect();
 
