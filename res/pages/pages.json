@@ -28,5 +28,10 @@
         "title": "Agent Profile",
         "filename": "agent",
         "heading": "Agent"
+    },
+    "game.html": {
+        "title": "Spectate Games",
+        "filename": "game",
+        "heading": "Spectate Games"
     }
 }

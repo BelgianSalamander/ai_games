@@ -1,19 +1,31 @@
-use std::sync::Arc;
+use std::{future::Future, sync::{Arc, atomic::{AtomicUsize, Ordering}}, pin::Pin};
 
 use async_std::sync::Mutex;
-use log::error;
-use serde_json::Value;
+use async_trait::async_trait;
+use log::{error, info};
+use serde_json::{Value, json};
 
 use crate::games::Game;
 
-pub type StartCallback = Box<dyn FnMut(usize, &str, &[i32]) + Sync + Send>;
-pub type EndCallback = Box<dyn FnMut(usize) + Sync + Send>;
-pub type UpdateCallback = Box<dyn FnMut(usize, &Value) + Sync + Send>;
+#[async_trait]
+pub trait StartCallback: Sync + Send {
+    async fn call(&mut self, id: usize, name: &str, players: &[i32]);
+}
+
+#[async_trait]
+pub trait EndCallback: Sync + Send  {
+    async fn call(&mut self, id: usize);
+}
+
+#[async_trait]
+pub trait UpdateCallback: Sync + Send  {
+    async fn call(&mut self, id: usize, data: &Value);
+}
 
 struct CallbackHandler {
-    on_start_game: Vec<StartCallback>,
-    on_end_game: Vec<EndCallback>,
-    on_update: Vec<UpdateCallback>
+    on_start_game: Vec<Box<dyn StartCallback>>,
+    on_end_game: Vec<Box<dyn EndCallback>>,
+    on_update: Vec<Box<dyn UpdateCallback>>
 }
 
 impl CallbackHandler {
@@ -25,33 +37,33 @@ impl CallbackHandler {
         }
     }
 
-    pub fn add_start_game_callback(&mut self, callback: StartCallback) {
+    pub fn add_start_game_callback(&mut self, callback: Box<dyn StartCallback>) {
         self.on_start_game.push(callback);
     }
 
-    pub fn add_end_game_callback(&mut self, callback: EndCallback) {
+    pub fn add_end_game_callback(&mut self, callback: Box<dyn EndCallback>) {
         self.on_end_game.push(callback);
     }
 
-    pub fn add_update_callback(&mut self, callback: UpdateCallback) {
+    pub fn add_update_callback(&mut self, callback: Box<dyn UpdateCallback>) {
         self.on_update.push(callback);
     }
 
-    pub fn start_game(&mut self, id: usize, name: &str, players: &[i32]) {
+    pub async fn start_game(&mut self, id: usize, name: &str, players: &[i32]) {
         for callback in &mut self.on_start_game {
-            callback(id, name, players);
+            callback.call(id, name, players).await;
         }
     }
 
-    pub fn end_game(&mut self, id: usize) {
+    pub async fn end_game(&mut self, id: usize) {
         for callback in &mut self.on_end_game {
-            callback(id);
+            callback.call(id).await;
         }
     }
 
-    pub fn update_game(&mut self, id: usize, data: &Value) {
+    pub async fn update_game(&mut self, id: usize, data: &Value) {
         for callback in &mut self.on_update {
-            callback(id, data);
+            callback.call(id, data).await;
         }
     }
 }
@@ -69,7 +81,7 @@ impl GameReporter {
         }
     }
 
-    pub async fn update<T: serde::Serialize>(&mut self, data: &T) {
+    pub async fn update<T: serde::Serialize>(&mut self, data: &T, kind: &str) {
         let val = match serde_json::to_value(data) {
             Ok(x) => x,
             Err(e) => {
@@ -78,7 +90,12 @@ impl GameReporter {
             }
         };
 
-        self.callbacks.lock().await.update_game(self.id, &val);
+        let val = json!({
+            "kind": kind,
+            "data": val
+        });
+
+        self.callbacks.lock().await.update_game(self.id, &val).await;
     }
 }
 
@@ -87,42 +104,41 @@ impl Drop for GameReporter {
         let callbacks_clone = self.callbacks.clone();
         let id = self.id;
         async_std::task::spawn(async move {
-            callbacks_clone.lock().await.end_game(id);
+            callbacks_clone.lock().await.end_game(id).await;
         });
     }
 }
 
 pub struct Reporter {
-    id_counter: usize,
+    id_counter: AtomicUsize,
     callbacks: Arc<Mutex<CallbackHandler>>
 }
 
 impl Reporter {
     pub fn new() -> Self {
         Self {
-            id_counter: 0,
+            id_counter: AtomicUsize::new(0),
             callbacks: Arc::new(Mutex::new(CallbackHandler::new()))
         }
     }
 
-    pub async fn start_game<GameType: Game>(&mut self, game: GameType, players: &[i32]) -> GameReporter {
-        let id = self.id_counter;
-        self.id_counter += 1;
+    pub async fn start_game<GameType: Game>(&self, game: &GameType, players: &[i32]) -> GameReporter {
+        let id = self.id_counter.fetch_add(1, Ordering::AcqRel);
 
-        self.callbacks.lock().await.start_game(id, game.name(), players);
+        self.callbacks.lock().await.start_game(id, game.name(), players).await;
 
         GameReporter::new(self.callbacks.clone(), id)
     }
 
-    pub async fn add_start_game_callback(&mut self, callback: StartCallback) {
+    pub async fn add_start_game_callback(&self, callback: Box<dyn StartCallback>) {
         self.callbacks.lock().await.add_start_game_callback(callback);
     }
 
-    pub async fn add_end_game_callback(&mut self, callback: EndCallback) {
+    pub async fn add_end_game_callback(&self, callback: Box<dyn EndCallback>) {
         self.callbacks.lock().await.add_end_game_callback(callback);
     }
 
-    pub async fn add_update_callback(&mut self, callback: UpdateCallback) {
+    pub async fn add_update_callback(&self, callback: Box<dyn UpdateCallback>) {
         self.callbacks.lock().await.add_update_callback(callback);
     }
 }

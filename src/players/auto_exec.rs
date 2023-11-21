@@ -11,6 +11,8 @@ use crate::{
 
 use crate::entities::prelude::*;
 
+use super::reporting::Reporter;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PlayerId(usize);
 
@@ -46,7 +48,9 @@ pub struct GameRunner<T: Game + 'static> {
 
     pub game: Arc<T>,
     pub itf: GameInterface,
-    languages: Vec<Arc<dyn Language>>
+    languages: Vec<Arc<dyn Language>>,
+
+    pub reporting: Reporter
 }
 
 impl<T: Game + 'static> GameRunner<T> {
@@ -77,7 +81,9 @@ impl<T: Game + 'static> GameRunner<T> {
 
             game: Arc::new(game),
             itf,
-            languages: get_all_languages()
+            languages: get_all_languages(),
+
+            reporting: Reporter::new()
         }
     }
 
@@ -139,6 +145,7 @@ impl<T: Game + 'static> GameRunner<T> {
             })).await.into_iter().map(|x| x.unwrap()).collect();
 
             let mut agents = vec![];
+            let mut ids = vec![];
 
             for (sandbox, player) in sanboxes.into_iter().zip(players.iter()) {
                 let language = self.get_language(&player.language).unwrap();
@@ -151,14 +158,17 @@ impl<T: Game + 'static> GameRunner<T> {
                 });
 
                 agents.push(job);
+                ids.push(player.id);
             }
 
             let game_copy = self.game.clone();
             let db_copy = self.db.clone();
 
+            let reporter = self.reporting.start_game(game_copy.as_ref(), &ids).await;
+
             async_std::task::spawn(async move {
                 info!("Starting a game!");
-                let results = game_copy.run(&mut agents, Some(Duration::from_millis(500))).await;
+                let results = game_copy.run(&mut agents, Some(Duration::from_millis(500)), reporter).await;
 
                 let mut players: Vec<entities::agent::ActiveModel> = players.into_iter().map(|p| p.into()).collect();
 

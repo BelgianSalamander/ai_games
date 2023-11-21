@@ -3,7 +3,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use proc_gamedef::make_server;
 
-use crate::{isolate::sandbox::RunningJob, games::{await_seconds, Waiter}};
+use crate::{isolate::sandbox::RunningJob, games::{await_seconds, Waiter}, players::reporting::GameReporter};
 
 use super::Game;
 
@@ -54,7 +54,7 @@ impl Game for TicTacToe {
         2
     }
 
-    async fn run(&self, players: &mut Vec<RunningJob>, min_delay: Option<Duration>) -> Vec<f32> {
+    async fn run(&self, players: &mut Vec<RunningJob>, min_delay: Option<Duration>, mut reporter: GameReporter) -> Vec<f32> {
         let mut waiter = Waiter::new(min_delay);
         let mut agents: Vec<_> = players.into_iter().map(|x| Agent::new(x)).collect();
 
@@ -73,6 +73,7 @@ impl Game for TicTacToe {
             let m = match await_seconds(agents[player].get_move(&grid, &piece), 1.0).await {
                 Ok(m) => m,
                 Err(e) => {
+                    reporter.update(&player, "player_error").await;
                     agents[player].set_error(e);
                     for agent in agents {
                         agent.kill().await;
@@ -89,6 +90,8 @@ impl Game for TicTacToe {
             waiter.wait().await;
 
             if m.row > 2 || m.col > 2 || grid[m.row as usize][m.col as usize] != BoardCell::Empty {
+                reporter.update(&player, "player_error").await;
+
                 agents[player].set_error(format!("Invalid Move ({}, {})", m.row, m.col));
                 for agent in agents {
                     agent.kill().await;
@@ -106,6 +109,8 @@ impl Game for TicTacToe {
             } else {
                 BoardCell::Nought
             };
+
+            reporter.update(&grid, "grid_state").await;
 
             if let Some(winner) = get_winner(&grid) {
                 for agent in agents {

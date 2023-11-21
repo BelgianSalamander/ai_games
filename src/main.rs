@@ -4,7 +4,7 @@ use sea_orm::{Database, EntityTrait, QueryFilter, ColumnTrait, DatabaseConnectio
 use util::DATABASE_URL;
 use std::{path::{Path, PathBuf}, process::exit, sync::Arc, env, collections::HashSet};
 
-use crate::{games::{oxo::TicTacToe, Game}, util::RUN_DIR, web::api, entities::agent, players::auto_exec::GameRunner};
+use crate::{games::{oxo::TicTacToe, Game}, util::RUN_DIR, web::{api, game_reporter::GameReporter}, entities::agent, players::{auto_exec::GameRunner}};
 
 pub mod isolate;
 pub mod util;
@@ -121,6 +121,14 @@ fn main() {
         cleanup_files(&db).await;
 
         let runner = Arc::new(GameRunner::new(game, "tic_tac_toe", 10, db).await);
+
+        let mut reporter = GameReporter::new(&runner).await;
+
+        std::thread::spawn(move || {
+            async_std::task::block_on(async {
+                reporter.run().await.unwrap();
+            });
+        });
 
         //Launch api on new thread
         let runner_copy = runner.clone();

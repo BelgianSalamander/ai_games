@@ -2,7 +2,7 @@ use std::{future::Future, io::Error, time::{Duration, Instant}};
 
 use async_trait::async_trait;
 
-use crate::isolate::sandbox::RunningJob;
+use crate::{isolate::sandbox::RunningJob, players::reporting::GameReporter};
 
 pub mod oxo;
 
@@ -48,7 +48,7 @@ pub trait Game: Sync + Send {
     fn num_players(&self) -> usize;
     fn name(&self) -> &'static str;
 
-    async fn run(&self, players: &mut Vec<RunningJob>, min_delay: Option<Duration>) -> Vec<f32>;
+    async fn run(&self, players: &mut Vec<RunningJob>, min_delay: Option<Duration>, reporter: GameReporter) -> Vec<f32>;
 }
 
 #[async_trait]
@@ -61,7 +61,7 @@ impl Game for Box<dyn Game> {
         (**self).name()
     }
 
-    async fn run(&self, players: &mut Vec<RunningJob>, min_delay: Option<Duration>) -> Vec<f32> {
-        (**self).run(players, min_delay).await
+    async fn run(&self, players: &mut Vec<RunningJob>, min_delay: Option<Duration>, reporter: GameReporter) -> Vec<f32> {
+        (**self).run(players, min_delay, reporter).await
     }
 }
