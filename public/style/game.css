@@ -1,0 +1,88 @@
+#selectors {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+
+    column-gap: 10px;
+
+    margin-bottom: 10px;
+}
+
+#agent-name {
+    padding: 5px;
+    border: none;
+    text-align: center;
+    font-size: 25px;
+
+    background-color: var(--colour-one);
+
+    border-radius: 15px;
+
+    width: 100%;
+    box-sizing: border-box;
+}
+
+#agent-name-suggestions {
+    display: none;
+    position: absolute;
+
+    min-width: 160px;
+    background-color: var(--colour-four);
+
+    border-radius: 15px;
+
+    cursor: pointer;
+}
+
+#agent-name-suggestions span {
+    display: block;
+    font-size: 25px;
+    padding: 5px;
+    border-radius: 15px;
+}
+
+#agent-name-suggestions span:hover {
+    background-color: #777;
+}
+
+#join-game {
+    font-size: 25px;
+    border: none;
+    background-color: #a6a1d4;
+    border-radius: 15px;
+    cursor: pointer;
+}
+
+#join-game:hover {
+    background-color: var(--colour-three)
+}
+
+#game-display {
+    background-color: white;
+    border-radius: 15px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px;
+    min-height: 50vh;
+}
+
+.tic-tac-toe-cell {
+    text-align: center;
+    font-size: 150px;
+    padding: 15px;
+}
+
+.tic-tac-toe-cross {
+    color: red;
+}
+
+.tic-tac-toe-nought {
+    color: blue;
+}
+
+.playing-agent-name {
+    color: black;
+    font-weight: bold;
+    text-decoration: none;
+    font-size: 3em;
+    text-align: center;
+}

@@ -47,7 +47,9 @@ impl GameConnectRequest {
 struct Spectator {
     ws: WebSocketStream<TcpStream>,
     game_request: Option<GameConnectRequest>,
-    curr_game: Option<usize>
+    curr_game: Option<usize>,
+
+    error: bool
 }
 
 impl Spectator {
@@ -107,16 +109,25 @@ impl SharedInner {
         self.spectators.push(Arc::new(Mutex::new(Spectator {
             ws,
             game_request: None,
-            curr_game: None
+            curr_game: None,
+            error: false
         })));
     }
 
     async fn check_ws(&mut self) {
-        for spectator in &self.spectators {
+        'outer: for spectator in &self.spectators {
             let mut lock = spectator.lock().await;
+            if lock.error {
+                continue;
+            }
+            
             match lock.ws.next().now_or_never() {
                 None | Some(None) => {},
-                Some(Some(Err(e))) => error!("WS Error {:?}", e),
+                Some(Some(Err(e))) => {
+                    error!("WS Error {:?}", e);
+                    lock.error = true;
+                    continue 'outer;
+                },
                 Some(Some(Ok(Message::Text(s)))) => {
                     if let Ok(req) = serde_json::from_str::<GameConnectRequest>(&s) {
                         info!("Received game connect request {:?}", req);
@@ -127,7 +138,9 @@ impl SharedInner {
                         for (id, game) in &mut self.games {
                             if Some(*id) != lock.curr_game && req.matches(game) {
                                 if let Err(e) = lock.connect_to_game(game).await {
-                                    error!("WS Error {:?}", e)
+                                    error!("WS Error {:?}", e);
+                                    lock.error = true;
+                                    continue 'outer;
                                 }
 
                                 remove_from =  lock.curr_game.replace(*id);
@@ -149,7 +162,16 @@ impl SharedInner {
                         error!("Invalid game connect request {:?}", s);
                     }
                 },
-                x => error!("Unexpected message from ws {:?}", x)
+                x => {
+                    error!("Unexpected message from ws {:?}", x);
+                    lock.error = true;
+                }
+            }
+        }
+
+        for i in (0..self.spectators.len()).rev() {
+            if self.spectators[i].lock().await.error {
+                self.spectators.swap_remove(i);
             }
         }
     }
@@ -175,7 +197,8 @@ impl SharedInner {
             if let Some(req) = lock.game_request {
                 if req.matches(&self.games.get(&id).unwrap()) {
                     if let Err(e) = lock.connect_to_game(self.games.get(&id).unwrap()).await {
-                        error!("WS Error {:?}", e)
+                        error!("WS Error {:?}", e);
+                        lock.error = true;
                     }
 
                     if let Some(game) = lock.curr_game.replace(id) {
@@ -203,6 +226,7 @@ impl SharedInner {
 
                 if let Err(e) = lock.end_game().await {
                     error!("WS Error: {:?}", e);
+                    lock.error = true;
                 }
 
                 lock.curr_game = None;
@@ -221,6 +245,7 @@ impl SharedInner {
 
                 if let Err(e) = lock.update_game(data).await {
                     error!("WS Error: {:?}", e);
+                    lock.error = true;
                 }
             }
         }
@@ -295,7 +320,7 @@ impl GameReporter {
         async_std::task::spawn(async move {
             loop {
                 {shared_inner.lock().await.check_ws().await;}
-                async_std::task::sleep(Duration::from_millis(100)).await;
+                async_std::task::sleep(Duration::from_millis(25)).await;
             }
         });
 
