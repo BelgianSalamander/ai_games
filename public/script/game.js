@@ -158,6 +158,8 @@ function processQueue() {
                 gameEngine.updateGame(e, packet.data);
             } else if (packet.kind == "end") {
                 gameEngine.endGame(e, packet.data);
+
+                setTimeout(connect, 2000);
             } else {
                 console.log("Invalid packet kind!", packet);
             }
