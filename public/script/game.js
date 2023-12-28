@@ -133,6 +133,46 @@ const GAME_MAP = {
     "Tic Tac Toe": new TicTacToe()
 };
 
+const MIN_DELAY = 250;
+const eventQueue = [];
+let lastUpdate = new Date();
+let queueCallback = -1;
+
+function processQueue() {
+    if (queueCallback != -1) {
+        clearTimeout(queueCallback);
+    }
+    queueCallback = -1;
+
+    let currentTime = new Date();
+
+    if (currentTime - lastUpdate >= MIN_DELAY) {
+        if (eventQueue.length) {
+            const e = document.getElementById("game-display");
+
+            let packet = eventQueue[0];
+            eventQueue.splice(0, 1);
+
+            console.log("Processing packet", packet);
+            if (packet.kind == "update") {
+                gameEngine.updateGame(e, packet.data);
+            } else if (packet.kind == "end") {
+                gameEngine.endGame(e, packet.data);
+            } else {
+                console.log("Invalid packet kind!", packet);
+            }
+        }
+
+        lastUpdate = currentTime;
+
+        queueCallback = setTimeout(processQueue, MIN_DELAY);
+    } else {
+        let needed = Math.max(0, MIN_DELAY - (currentTime - lastUpdate));
+
+        queueCallback = setTimeout(processQueue, needed);
+    }
+}
+
 function onLoad() {
     fetch("/api/agent_leaderboard").then(x => x.json()).then(data => {
         agents = data;
@@ -156,14 +196,21 @@ function onLoad() {
             e.innerHTML = "";
             gameEngine = GAME_MAP[json.data.kind]
             gameEngine.startGame(e, json.data.players);
+            lastUpdate = new Date();
 
-            for (p in json.data.history) {
-                gameEngine.updateGame(e, JSON.parse(p));
+            eventQueue.length = 0;
+
+            for (p of json.data.history) {
+                eventQueue.push({
+                    "kind": "update",
+                    "data": JSON.parse(p)
+                });
             }
-        } else if (json.kind == "update") {
-            gameEngine.updateGame(e, json.data);
-        } else if (json.kind == "end") {
-            gameEngine.endGame(e, json.data);
+
+            processQueue();
+        } else {
+            eventQueue.push(json);
+            processQueue();
         }
     }
 }
