@@ -1,8 +1,10 @@
 use std::{sync::Arc, time::Duration};
 
+use colors_transform::{Hsl, Color};
 use deadpool::unmanaged::Pool;
 use gamedef::{game_interface::GameInterface, parser::parse_game_interface};
 use log::{debug, warn, info};
+use rand::Rng;
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QueryOrder, sea_query::{Func, SimpleExpr}, QuerySelect, ActiveValue, ActiveModelTrait, Value};
 
 use crate::{
@@ -88,6 +90,16 @@ impl<T: Game + 'static> GameRunner<T> {
     }
 
     pub async fn add_player(&self, name: String, language: String, directory: String, source_file: Option<String>, owner_id: Option<i32>, partial: bool) -> i32 {
+        let rgb = {
+            let mut rand = rand::thread_rng();
+            let hsl = Hsl::from(
+                rand.gen_range(0.0..360.0),
+                rand.gen_range(20.0..100.0),
+                rand.gen_range(30.0..90.0)
+            );
+            hsl.to_rgb()
+        };
+        
         let agent = agent::ActiveModel {
             name: ActiveValue::Set(name),
             language: ActiveValue::Set(language),
@@ -95,6 +107,7 @@ impl<T: Game + 'static> GameRunner<T> {
             source_file: ActiveValue::Set(source_file),
             owner_id: ActiveValue::Set(owner_id),
             partial: ActiveValue::Set(partial),
+            colour: ActiveValue::Set(rgb.to_css_hex_string().to_ascii_uppercase()),
             ..Default::default()
         };
         let res = Agent::insert(agent).exec(&self.db).await.unwrap();
