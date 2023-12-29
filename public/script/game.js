@@ -2,15 +2,38 @@ let agents;
 let ws;
 let gameEngine;
 
+COLOUR_CACHE = {};
+NAME_CACHE = {};
+
+function getColour(agentId) {
+    if (agentId in COLOUR_CACHE) {
+        return COLOUR_CACHE[agentId];
+    } else {
+        fetch(`/api/agent?agent=${agentId}&error=false&src=false`).then(res => res.json()).then(res => {
+            COLOUR_CACHE[agentId] = res.colour;
+            NAME_CACHE[agentId] = res.name;
+        });
+
+        return "#FF0000";
+    }
+}
+
 class TicTacToe {
     makePlayerElement(id, extra) {
         const link = document.createElement("a");
         link.classList.add("playing-agent-name");
         link.href = `/pages/agent.html?agent=${id}`;
+        link.style.color = getColour(id);
 
-        fetch(`/api/agent?agent=${id}`).then(res => res.json()).then(data => {
-            link.innerText = data.name + extra;
-        });
+        if (!(id in NAME_CACHE)) {
+            fetch(`/api/agent?agent=${id}`).then(res => res.json()).then(data => {
+                link.innerText = data.name + extra;
+                NAME_CACHE[id] = data.name;
+                COLOUR_CACHE[id] = data.colour;
+            });
+        } else {
+            link.innerText = NAME_CACHE[id] + extra;
+        }
 
         return link;
     }
@@ -27,6 +50,9 @@ class TicTacToe {
         playerList.style.flexDirection = "column";
         playerList.style.justifyContent = "space-evenly";
         playerList.style.alignItems = "center";
+
+        this.xColor = getColour(players[0]);
+        this.oColor = getColour(players[1]);
 
         playerList.appendChild(this.makePlayerElement(players[0], " (X)"));
         const vs = document.createElement("span");
@@ -81,11 +107,13 @@ class TicTacToe {
                         if (!cell.classList.contains("tic-tac-toe-cross")) {
                             cell.classList.add("tic-tac-toe-cross");
                         }
+                        cell.style.color = this.xColor;
                     } else if (data.data[r][c] == "Nought") {
                         cell.innerText = "O";
                         if (!cell.classList.contains("tic-tac-toe-nought")) {
                             cell.classList.add("tic-tac-toe-nought");
                         }
+                        cell.style.color = this.oColor;
                     }
                 }
             }
@@ -187,6 +215,11 @@ function onLoad() {
                 return 0;
             }
         });
+
+        for (agent of data) {
+            COLOUR_CACHE[agent.id] = agent.colour;
+            NAME_CACHE[agent.id] = agent.name;
+        }
     });
 
     ws = new WebSocket("ws://172.31.180.162:42070/");
