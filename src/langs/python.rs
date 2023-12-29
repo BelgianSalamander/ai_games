@@ -234,7 +234,7 @@ impl Language for Python {
             template.push_str("    pass\n\n");
         }
 
-        res.add_file("game.py", template, false, "Basic template for agent", "game.py");
+        res.add_file("agent.py", template, false, "Basic template for agent", "game.py");
 
         let mut interactor = String::new();
 

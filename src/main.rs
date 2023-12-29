@@ -1,10 +1,11 @@
+use gamedef::{game_interface::GameInterface, parser::parse_game_interface};
 use log::{info, debug};
 use proc_gamedef::make_server;
 use sea_orm::{Database, EntityTrait, QueryFilter, ColumnTrait, DatabaseConnection};
 use util::DATABASE_URL;
 use std::{path::{Path, PathBuf}, process::exit, sync::Arc, env, collections::HashSet};
 
-use crate::{games::{oxo::TicTacToe, Game}, util::RUN_DIR, web::{api, game_reporter::GameReporter}, entities::agent, players::{auto_exec::GameRunner}};
+use crate::{games::{oxo::TicTacToe, Game}, util::RUN_DIR, web::{api, game_reporter::GameReporter}, entities::agent, players::{auto_exec::GameRunner}, langs::{cpp::CppLang, language::Language}};
 
 pub mod isolate;
 pub mod util;
@@ -104,6 +105,12 @@ fn main() {
 
     info!("Clearing tmp/ directory");
     std::fs::remove_dir_all("./tmp").unwrap_or(());
+
+    let itf_path = "res/games/snake.game";
+    let itf = std::fs::read_to_string(itf_path).unwrap();
+    let itf = parse_game_interface(&itf, "snake".to_string()).unwrap();
+    let l = CppLang;
+    l.prepare_files(&itf);
 
     if !Path::new(RUN_DIR).is_dir() {
         std::fs::create_dir(RUN_DIR).unwrap();

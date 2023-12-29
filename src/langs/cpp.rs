@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use deadpool::unmanaged::Pool;
 use gamedef::game_interface::{
-    get_enum_variant_type, is_basic_enum, BuiltinType, EnumVariants, StructFields, Type,
+    get_enum_variant_type, is_basic_enum, BuiltinType, EnumVariants, StructFields, Type, GameInterface,
 };
 
 use crate::{
@@ -58,7 +58,7 @@ pub fn full_enum_decl(
     name: Option<String>,
 ) -> String {
     let mut res = String::new();
-    if let Some(name) = name {
+    if let Some(name) = &name {
         res.push_str(&format!("struct {} {{", name))
     } else {
         res.push_str("struct {")
@@ -123,6 +123,36 @@ pub fn full_enum_decl(
     }
 
     res.push_str("    } inner;");
+
+    if let Some(name) = name {
+        for (idx, variant) in variants.iter().enumerate() {
+            res.push_str(&format!("\n\n    {} {}(", name, variant.name));
+
+            for (i, field) in variant.types.iter().enumerate() {
+                if i != 0 {
+                    res.push_str(", ");
+                }
+
+                res.push_str(&type_as_inline_cpp(&field.ty));
+
+                res.push_str(" ");
+
+                res.push_str(&field.name);
+            }
+
+            res.push_str(&format!(") {{\n        return {{EnumMembers::{}::VARIANT_ID, {{ .{}_val = EnumMembers::{} {{", variant.name, variant.name, variant.name));
+
+            for (i, field) in variant.types.iter().enumerate() {
+                if i != 0 {
+                    res.push_str(", ");
+                }
+
+                res.push_str(&field.name);
+            }
+
+            res.push_str("} } };\n    }\n");
+        }
+    }
 
     if pretty {
         res.push_str("\n");
@@ -425,6 +455,63 @@ fn write_encoder(
     }
 }
 
+fn make_default_value(ty: &Type, out: &mut String, name: Option<&str>, itf: &GameInterface) {
+    match ty {
+        Type::Builtin(BuiltinType::Bool) => out.push_str("false"),
+        Type::Builtin(BuiltinType::F32) => out.push_str("0.0f"),
+        Type::Builtin(BuiltinType::F64) => out.push_str("0.0d"),
+        Type::Builtin(BuiltinType::Str) => out.push_str("std::string()"),
+        Type::Builtin(_) => out.push_str("0"),
+
+        Type::Array(ty, size) => {
+            out.push_str("{");
+
+            for i in 0..*size {
+                if i != 0 {
+                    out.push_str(", ");
+                }
+
+                make_default_value(&ty, out, None, itf);
+                out.push_str("}");
+            }
+        },
+
+        Type::DynamicArray(_ty) => out.push_str("{}"),
+        Type::Enum(variants) => {
+            if is_basic_enum(&variants) {
+                out.push_str(&format!("{}::{}", name.unwrap(), variants[0].name));
+            } else {
+                out.push_str(&format!("{}::{}(", name.unwrap(), variants[0].name));
+
+                for (i, field) in variants[0].types.iter().enumerate() {
+                    if i != 0 {
+                        out.push_str(", ");
+                    }
+
+                    make_default_value(&field.ty, out, None, itf);
+                }
+            }
+        },
+        Type::Struct(fields) => {
+            out.push_str("{");
+
+            for (i, field) in fields.iter().enumerate() {
+                if i != 0 {
+                    out.push_str(", ");
+                }
+
+                make_default_value(&field.ty, out, None, itf);
+            }
+
+            out.push_str("}");
+        },
+        Type::NamedType(name) => {
+            let (_, t) = itf.types.iter().filter(|(x, _)| x == name).next().unwrap();
+            make_default_value(t, out, Some(&name), itf);
+        }
+    }
+}
+
 //TODO: C++ Versioning
 #[async_trait]
 impl Language for CppLang {
@@ -603,6 +690,56 @@ int main(){
         interactor.push_str("\n    }\n}");
 
         res.add_file("interactor.cpp", interactor, false, "The interactor", "interactor.cpp");
+
+        let mut template = String::new();
+        template.push_str("#include \"game_types.h\"\n\n");
+
+        for (function_name, signature) in &game_interface.functions {
+            if let Some(ret) = &signature.ret {
+                template.push_str(&type_as_inline_cpp(ret));
+            } else {
+                template.push_str("void");
+            }
+
+            template.push(' ');
+
+            template.push_str(&function_name);
+            template.push('(');
+
+            for (idx, (name, ty)) in signature.args.iter().enumerate() {
+                template.push_str(&type_as_inline_cpp(ty));
+
+                let do_ref = match ty {
+                    Type::Builtin(BuiltinType::Str) => true,
+                    Type::Builtin(_) => false,
+                    _ => true,
+                };
+
+                if do_ref {
+                    template.push('&');
+                }
+
+                template.push(' ');
+
+                template.push_str(&name);
+
+                if idx != signature.args.len() - 1 {
+                    template.push_str(", ");
+                }
+            }
+
+            template.push_str(") {\n    //Implement logic here...\n");
+            
+            if let Some(ret) = &signature.ret {
+                template.push_str("    return ");
+                make_default_value(ret, &mut template, None, &game_interface);
+                template.push_str(";\n");
+            }
+
+            template.push_str("}\n\n");
+        }
+
+        res.add_file("agent.cpp", template, false, "Basic template for agent", "agent.cpp");
 
         res
     }
