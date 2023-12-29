@@ -28,6 +28,12 @@ function onLoad() {
             }
             table.appendChild(headingRow);
 
+            res[lang].sort(function(a, b) {
+                if (a.display < b.display) return -1;
+                if (a.display > b.display) return 1;
+                return 0;
+            });
+
             for (file of res[lang]) {
                 let row = document.createElement("tr");
 
