@@ -838,6 +838,10 @@ async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpRes
 
         let agent = agent::Entity::find_by_id(agent_id).one(&state.db).await.unwrap();
 
+        if agent.is_none() {
+            return Err(Response::basic_error(Status::NotFound, "Not found"));
+        }
+
         let color = format!("#{:02X}{:02X}{:02X}", r, g, b);
         println!("Color = {}", color);
 
@@ -845,6 +849,32 @@ async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpRes
 
         active.colour = ActiveValue::Set(color);
         active.update(&state.db).await.unwrap();
+
+        let mut res = Response::new();
+        res.set_status(Status::Ok);
+
+        Ok(res)
+    } else if req.matches_path_exact(&["api", "delete_agent"]) {
+        let profile = get_user(&req, &state).await;
+
+        if profile.is_none() {
+            return Err(Response::basic_error(Status::NotFound, "User id not found"));
+        }
+        let profile = profile.unwrap();
+
+        if !is_user_authenticated(&req, &profile) {
+            return Err(Response::basic_error(Status::Unauthorized, "Unauthorized"));
+        }
+
+        let agent_id: i32 = req.path.parse_query("agent")?;
+
+        let agent = agent::Entity::find_by_id(agent_id).one(&state.db).await.unwrap();
+
+        if agent.is_none() {
+            return Err(Response::basic_error(Status::NotFound, "Agent not found"));
+        }
+
+        agent.unwrap().delete(&state.db).await.unwrap();
 
         let mut res = Response::new();
         res.set_status(Status::Ok);

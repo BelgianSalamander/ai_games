@@ -1,4 +1,4 @@
-let id = null;
+let profileId = null;
 
 function makeAgentElement(agent, langs) {
     let element = document.createElement("div");
@@ -37,12 +37,12 @@ function makeAgentElement(agent, langs) {
 function onLoad() {
     //Get id from url
     const urlParams = new URLSearchParams(window.location.search);
-    id = urlParams.get('id');
+    profileId = urlParams.get('id');
 
     const titleElement = document.getElementById('title');
     const pageTitleElement = document.getElementById('page-heading');
 
-    fetch(`/api/profile?id=${id}`).then(response => response.json()).then(profile => {
+    fetch(`/api/profile?id=${profileId}`).then(response => response.json()).then(profile => {
         fetch("/api/lang").then(res => res.json()).then(langs => {
             lang_map = {};
 
@@ -60,7 +60,7 @@ function onLoad() {
 
                 const agentGrid = document.getElementById("agent-grid");
 
-                for (agent of profile.agents) {
+                for (const agent of profile.agents) {
                     const container = document.createElement("div");
                     container.classList.add("agent-container");
 
@@ -118,6 +118,25 @@ function onLoad() {
                         gameCount.innerText = "Played " + agent.games_played + " games";
                         container.appendChild(document.createElement("br"));
                         container.appendChild(gameCount);
+                    }
+
+                    if (profileId == id) {
+                        let deleteButton = document.createElement("button");
+                        deleteButton.innerText = "Delete Agent";
+                        deleteButton.classList.add("delete-agent-button");
+
+                        deleteButton.onclick = e => {
+                            if (confirm(`Are you sure you want to delete ${agent.name}`)) {
+                                fetch(`/api/delete_agent?id=${profileId}&agent=${agent.id}`, {
+                                    "method": "POST"
+                                }).then(() => {
+                                    window.location.reload();
+                                });
+                            }
+                        }
+
+                        container.appendChild(document.createElement("br"));
+                        container.appendChild(deleteButton);
                     }
 
                     agentGrid.appendChild(container);
