@@ -127,7 +127,7 @@ impl Language for Python {
 
         let mut res = ClientFiles::new();
 
-        res.include_client_file("interact_lib.py", "run");
+        res.include_client_file("interact_lib.py", "run", "Dependency of Interactor (You do not need this file)", "interact_lib.py");
 
         let mut type_defs = String::new();
 
@@ -196,7 +196,7 @@ impl Language for Python {
             }
         }
 
-        res.add_file("run/game_types.py", type_defs, false);
+        res.add_file("run/game_types.py", type_defs, false, "Defines types for game", "game_types.py");
 
         let mut template = String::new();
 
@@ -234,7 +234,7 @@ impl Language for Python {
             template.push_str("    pass\n\n");
         }
 
-        res.add_file("game.py", template, false);
+        res.add_file("game.py", template, false, "Basic template for agent", "game.py");
 
         let mut interactor = String::new();
 
@@ -427,7 +427,7 @@ impl Language for Python {
 
         interactor.push_str("\n\nif __name__ == '__main__':\n    mainloop()");
 
-        res.add_file("run/interactor.py", interactor, false);
+        res.add_file("run/interactor.py", interactor, false, "The interactor (You do not need this file)", "interactor.py");
 
         res
     }

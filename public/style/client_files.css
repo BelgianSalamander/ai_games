@@ -1,0 +1,20 @@
+.language-container {
+    width: 100%;
+    box-sizing: border-box;
+
+    background-color: var(--colour-four);
+
+    padding: 10px;
+    border-radius: 15px;
+
+    margin-bottom: 10px;
+}
+
+.file-table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+.file-table th, .file-table tr, .file-table td {
+    text-align: left;
+}

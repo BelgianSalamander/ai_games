@@ -2,10 +2,10 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
 use async_std::{net::{TcpListener, TcpStream},path::Path,};
 use futures::AsyncReadExt;
-use log::{info, error, warn};
+use log::{info, error, warn, debug};
 use rand::Rng;
 use sea_orm::{DatabaseConnection, EntityTrait, ModelTrait, ActiveValue, ActiveModelTrait, QueryFilter, ColumnTrait, QueryOrder};
-use serde_json::{json, Value, map::Values};
+use serde_json::{json, Value, map::Values, Map};
 
 use crate::{
     games::Game,
@@ -97,7 +97,7 @@ pub struct AppState {
     languages: Arc<Vec<Arc<dyn Language>>>,
     db: DatabaseConnection,
 
-    page_engine: PageEngine
+    page_engine: PageEngine,
 }
 
 async fn get_agent_leaderboard(state: AppState) -> String {
@@ -546,6 +546,55 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         res.set_body(serde_json::to_string(&data).unwrap().into_bytes());
 
         Ok(res)
+    } else if req.matches_path_exact(&["api", "list_files"]) {
+        let mut result = Map::new();
+
+        for (lang, files) in &state.executor.languages {
+            let mut files_json = vec![];
+
+            for (name, file) in &files.files {
+                if !file.hidden {
+                    files_json.push(json!({
+                        "name": name,
+                        "description": file.description,
+                        "display": file.download_name
+                    }));
+                }
+            }
+            
+            result.insert(lang.name().to_string(), json!(files_json));
+        }
+
+        let mut res = Response::new();
+        res.set_status(Status::Ok);
+        res.set_header("Content-Type", "application/json");
+        res.set_body(serde_json::to_string(&result).unwrap().into_bytes());
+
+        Ok(res)
+    } else if req.matches_path(&["client_files"]) && req.path.path.len() == 3 {
+        let target_lang = urlencoding::decode(&req.path.path[1]).unwrap().to_string();
+        let file = urlencoding::decode(&req.path.path[2]).unwrap().to_string();
+
+        debug!("Client wants file {} {}", target_lang, file);
+
+        for (lang, files) in &state.executor.languages {
+            if lang.name() == target_lang {
+                let res = match files.files.get(&file) {
+                    Some(x) => x,
+                    None => return Err(Response::basic_error(Status::NotFound, "Not found"))
+                };
+
+                let mut response = Response::new();
+                response.set_status(Status::Ok);
+                response.set_header("Content-Type", "application/octet-stream");
+                response.set_header("Content-Disposition", &format!("attachment; filename=\"{}\"", res.download_name));
+                response.set_body(res.content.clone().into_bytes());
+
+                return Ok(response);
+            }
+        }
+
+        Err(Response::basic_error(Status::NotFound, "Not found"))
     } else {
         Err(Response::basic_error(Status::NotFound, "Not found"))
     }

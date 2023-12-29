@@ -8,7 +8,7 @@ use rand::Rng;
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QueryOrder, sea_query::{Func, SimpleExpr}, QuerySelect, ActiveValue, ActiveModelTrait, Value};
 
 use crate::{
-    games::Game, isolate::sandbox::IsolateSandbox, langs::{get_all_languages, language::Language}, util::{temp_file::{TempFile, random_file}, ActiveValueExtension, RUN_DIR}, entities::{agent, self},
+    games::Game, isolate::sandbox::IsolateSandbox, langs::{get_all_languages, language::Language, files::ClientFiles}, util::{temp_file::{TempFile, random_file}, ActiveValueExtension, RUN_DIR}, entities::{agent, self},
 };
 
 use crate::entities::prelude::*;
@@ -50,7 +50,7 @@ pub struct GameRunner<T: Game + 'static> {
 
     pub game: Arc<T>,
     pub itf: GameInterface,
-    languages: Vec<Arc<dyn Language>>,
+    pub languages: Vec<(Arc<dyn Language>, ClientFiles)>,
 
     pub reporting: Reporter
 }
@@ -61,9 +61,10 @@ impl<T: Game + 'static> GameRunner<T> {
         let itf = std::fs::read_to_string(itf_path).unwrap();
         let itf = parse_game_interface(&itf, name.to_string()).unwrap();
 
-        for lang in get_all_languages() {
-            lang.prepare_files(&itf);
-        }
+        let languages = get_all_languages().into_iter().map(|lang| {
+            let files = lang.prepare_files(&itf);
+            (lang, files)
+        }).collect();
 
         let pool = Pool::new(num_sandboxes);
 
@@ -83,7 +84,7 @@ impl<T: Game + 'static> GameRunner<T> {
 
             game: Arc::new(game),
             itf,
-            languages: get_all_languages(),
+            languages,
 
             reporting: Reporter::new()
         }
@@ -116,7 +117,7 @@ impl<T: Game + 'static> GameRunner<T> {
     }
 
     pub fn get_language(&self, language: &str) -> Option<&Arc<dyn Language>> {
-        self.languages.iter().find(|l| l.id() == language)
+        self.languages.iter().find(|(l, _)| l.id() == language).map(|x| &x.0)
     }
 
     pub async fn run(&self) -> ! {

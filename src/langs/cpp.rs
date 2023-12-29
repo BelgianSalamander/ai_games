@@ -446,7 +446,7 @@ impl Language for CppLang {
     ) -> super::files::ClientFiles {
         let mut res = ClientFiles::new();
 
-        res.include_client_file("interact_lib.hpp", ".");
+        res.include_client_file("interact_lib.hpp", ".", "Dependency of interactor (You do not need this file)", "interact_lib.hpp");
 
         let mut type_defs = String::new();
 
@@ -479,7 +479,7 @@ impl Language for CppLang {
             }
         }
 
-        res.add_file("game_types.h", type_defs, false);
+        res.add_file("game_types.h", type_defs, false, "Defines types for game", "game_types.h");
 
         let mut function_decl = String::new();
         function_decl.push_str("#include \"game_types.h\"\n\n");
@@ -521,7 +521,7 @@ impl Language for CppLang {
             function_decl.push_str(");\n");
         }
 
-        res.add_file("game.h", function_decl, false);
+        res.add_file("game.h", function_decl, false, "Declares the functions you need to define (You do not need this file)", "game.h");
 
         let mut interactor = String::new();
         interactor.push_str("#include \"game.h\"\n");
@@ -602,7 +602,7 @@ int main(){
 
         interactor.push_str("\n    }\n}");
 
-        res.add_file("interactor.cpp", interactor, false);
+        res.add_file("interactor.cpp", interactor, false, "The interactor", "interactor.cpp");
 
         res
     }

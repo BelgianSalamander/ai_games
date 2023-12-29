@@ -33,5 +33,10 @@
         "title": "Spectate Games",
         "filename": "game",
         "heading": "Spectate Games"
+    },
+    "client_files.html": {
+        "title": "Client Files",
+        "filename": "client_files",
+        "heading": "Download Files"
     }
 }
