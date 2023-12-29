@@ -28,6 +28,7 @@ function onLoad() {
             nameLinkElement.classList.add("agent-name-link");
             nameLinkElement.href = `/pages/agent.html?agent=${agent.id}`;
             nameLinkElement.innerText = agent.name;
+            nameLinkElement.style.color = agent.colour;
             nameElement.appendChild(nameLinkElement);
             row.appendChild(nameElement);
 
