@@ -21,6 +21,7 @@ pub struct Model {
     pub in_game: bool,
     pub owner_id: Option<i32>,
     pub partial: bool,
+    pub colour: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

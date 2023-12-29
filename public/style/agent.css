@@ -62,3 +62,100 @@ h2 {
     background-color: white;
     padding: 10px;
 }
+
+#agent-colour {
+    display: flex;
+}
+
+#colour-container {
+    position: relative;
+    float: left;
+
+    margin-left: 0.5em;
+}
+
+#agent-colour-block {
+    height: 1em;
+    width: 3em;
+
+    border: 2px solid black;
+}
+
+#agent-colour-block[auth="1"] {
+    cursor: pointer;
+}
+
+#colour-picker {
+    position: absolute;
+
+    background-color: white;
+    border: 1px solid black;
+
+    padding: 0.5em;
+
+    z-index: 999999;
+}
+
+#colour-picker-canvas {
+    border: 1px solid gray;
+}
+
+#hue-line-container {
+    position: relative;
+    height: 20px;
+}
+
+#hue-line {
+    position: absolute;
+    width: 100%;
+    top: 6px;
+    height: 8px;
+    border-radius: 20px;
+    background: linear-gradient(
+        to right, 
+        hsl(0, 100%, 50%), 
+        hsl(60, 100%, 50%),
+        hsl(120, 100%, 50%),
+        hsl(180, 100%, 50%),
+        hsl(240, 100%, 50%),
+        hsl(300, 100%, 50%),
+        hsl(360, 100%, 50%)
+    );
+}
+
+#colour-slider {
+    position: absolute;
+
+    top: 2px;
+}
+
+#colour-slider-circle {
+    position: absolute;
+    height: 12px;
+    width: 12px;
+    left: -6px;
+
+    border-radius: 50%;
+    border: 2px white solid;
+
+    background-color: red;
+}
+
+#sl-slider {
+    position: absolute;
+}
+
+#sl-slider-circle {
+    position: absolute;
+
+    height: 12px;
+    width: 12px;
+
+    left: -6px;
+    top: -6px;
+
+    border-radius: 50%;
+    border: 2px white solid;
+
+    background-color: red;
+}

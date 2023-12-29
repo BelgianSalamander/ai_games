@@ -1,4 +1,4 @@
-use std::{collections::HashMap, net::SocketAddr, sync::Arc};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
 use async_std::{net::{TcpListener, TcpStream},path::Path,};
 use futures::AsyncReadExt;
@@ -116,6 +116,7 @@ async fn get_agent_leaderboard(state: AppState) -> String {
             "id": agent.id,
             "name": agent.name,
             "rating": agent.rating as i32,
+            "colour": agent.colour,
             "games_played": agent.num_games
         });
 
@@ -285,7 +286,8 @@ async fn get_agent_data_as_json(agent: &agent::Model, include_error: bool, inclu
         "games_played": agent.num_games,
         "in_game": agent.in_game,
         "removed": agent.removed,
-        "partial": agent.partial
+        "partial": agent.partial,
+        "colour": agent.colour
     });
 
     if include_error {
@@ -765,6 +767,38 @@ async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpRes
 
             agent.update(&db).await.unwrap();
         });
+
+        Ok(res)
+    } else if req.matches_path_exact(&["api", "set_colour"]) {
+        let profile = get_user(&req, &state).await;
+
+        if profile.is_none() {
+            return Err(Response::basic_error(Status::NotFound, "User id not found"));
+        }
+        let profile = profile.unwrap();
+
+        if !is_user_authenticated(&req, &profile) {
+            return Err(Response::basic_error(Status::Unauthorized, "Unauthorized"));
+        }
+
+        let agent_id: i32 = req.path.parse_query("agent")?;
+
+        let r: u8 = req.path.parse_query("r")?;
+        let g: u8 = req.path.parse_query("g")?;
+        let b: u8 = req.path.parse_query("b")?;
+
+        let agent = agent::Entity::find_by_id(agent_id).one(&state.db).await.unwrap();
+
+        let color = format!("#{:02X}{:02X}{:02X}", r, g, b);
+        println!("Color = {}", color);
+
+        let mut active: agent::ActiveModel = agent.unwrap().into();
+
+        active.colour = ActiveValue::Set(color);
+        active.update(&state.db).await.unwrap();
+
+        let mut res = Response::new();
+        res.set_status(Status::Ok);
 
         Ok(res)
     } else {

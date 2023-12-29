@@ -71,6 +71,7 @@ function onLoad() {
                     const nameElement = document.createElement("h3");
                     nameElement.classList.add("agent-name");
                     nameElement.innerText = agent.name;
+                    nameElement.style.color = agent.colour;
 
                     nameLink.appendChild(nameElement);
                     container.appendChild(nameLink);
