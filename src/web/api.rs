@@ -561,6 +561,59 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         res.set_body(serde_json::to_string(&result)?.into_bytes());
 
         Ok(res)
+    } else if req.matches_path_exact(&["api", "stats"]) {
+        let id = match req.path.query.get("id") {
+            Some(id) => {
+                match id.parse::<i32>() {
+                    Ok(id) => Some(id),
+                    Err(_) => None
+                }
+            }
+            None => None
+        };
+    
+        let username = req.path.query.get("username");
+    
+        if username.is_none() && id.is_none() {
+            return Err(WebError::InvalidData("Could not find desired user (Missing parameters)".to_string()));
+        }
+    
+        let mut query = user::Entity::find();
+    
+        if let Some(id) = id {
+            query = query.filter(user::Column::Id.eq(id));
+        }
+    
+        if let Some(username) = username {
+            query = query.filter(user::Column::Username.eq(username));
+        }
+    
+        let profile = query.one(&state.db).await?;
+
+        if profile.is_none() {
+            return Err(WebError::NotFound("Couldn't find user matching id or username".to_string()));
+        }
+        let profile = profile.unwrap();
+
+        let mut data = Map::new();
+
+        let agents = profile.find_related(agent::Entity).all(&state.db).await?;
+        let best_rating = agents.iter().map(|x| x.rating).max_by(|a, b| a.total_cmp(b)).unwrap_or(0.0);
+
+        let active_agents = agents.iter().filter(|x| !x.partial && !x.removed).count();
+
+        let total_games_played: i32 = agents.iter().map(|x| x.num_games).sum();
+
+        data.insert("best_rating".to_string(), json!(best_rating as i32));
+        data.insert("active_agents".to_string(), json!(active_agents));
+        data.insert("total_games".to_string(), json!(total_games_played));
+
+        let mut response = Response::new();
+        response.set_status(Status::Ok);
+        response.set_header("Content-Type", "application/json");
+        response.set_body(serde_json::to_string(&data)?.into_bytes());
+
+        Ok(response)
     } else if req.matches_path(&["client_files"]) && req.path.path.len() == 3 {
         let target_lang = urlencoding::decode(&req.path.path[1])?.to_string();
         let file = urlencoding::decode(&req.path.path[2])?.to_string();

@@ -42,6 +42,12 @@ function onLoad() {
     const titleElement = document.getElementById('title');
     const pageTitleElement = document.getElementById('page-heading');
 
+    fetch(`/api/stats?id=${profileId}`).then(response => response.json()).then(stats => {
+        document.getElementById("user-best-agent-data").innerText = stats["best_rating"];
+        document.getElementById("user-active-agents-data").innerText = stats["active_agents"];
+        document.getElementById("user-total-games-data").innerText = stats["total_games"];
+    });
+
     fetch(`/api/profile?id=${profileId}`).then(response => response.json()).then(profile => {
         fetch("/api/lang").then(res => res.json()).then(langs => {
             lang_map = {};
@@ -53,6 +59,8 @@ function onLoad() {
             const username = profile.username;
             titleElement.innerText = "Profile - " + username;
             pageTitleElement.innerText = username + "'s Profile";
+
+            document.getElementById("user-username-data").innerText = username;
 
             if (profile.privileged) {
                 const hidden = document.getElementById("hidden-info");
