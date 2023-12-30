@@ -3,12 +3,12 @@ use std::{sync::Arc, time::Duration};
 use colors_transform::{Hsl, Color};
 use deadpool::unmanaged::Pool;
 use gamedef::{game_interface::GameInterface, parser::parse_game_interface};
-use log::{debug, warn, info};
+use log::{debug, warn, info, error};
 use rand::Rng;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QueryOrder, sea_query::{Func, SimpleExpr}, QuerySelect, ActiveValue, ActiveModelTrait, Value};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QueryOrder, sea_query::{Func, SimpleExpr}, QuerySelect, ActiveValue, ActiveModelTrait, Value, DbErr};
 
 use crate::{
-    games::Game, isolate::sandbox::IsolateSandbox, langs::{get_all_languages, language::Language, files::ClientFiles}, util::{temp_file::{TempFile, random_file}, ActiveValueExtension, RUN_DIR}, entities::{agent, self},
+    games::Game, isolate::sandbox::IsolateSandbox, langs::{get_all_languages, language::Language, files::ClientFiles}, util::{temp_file::{TempFile, random_file}, ActiveValueExtension, RUN_DIR}, entities::{agent, self}, web::{http::HttpError, web_errors::HttpResult},
 };
 
 use crate::entities::prelude::*;
@@ -90,7 +90,7 @@ impl<T: Game + 'static> GameRunner<T> {
         }
     }
 
-    pub async fn add_player(&self, name: String, language: String, directory: String, source_file: Option<String>, owner_id: Option<i32>, partial: bool) -> i32 {
+    pub async fn add_player(&self, name: String, language: String, directory: String, source_file: Option<String>, owner_id: Option<i32>, partial: bool) -> Result<i32, DbErr> {
         let rgb = {
             let mut rand = rand::thread_rng();
             let hsl = Hsl::from(
@@ -111,9 +111,9 @@ impl<T: Game + 'static> GameRunner<T> {
             colour: ActiveValue::Set(rgb.to_css_hex_string().to_ascii_uppercase()),
             ..Default::default()
         };
-        let res = Agent::insert(agent).exec(&self.db).await.unwrap();
+        let res = Agent::insert(agent).exec(&self.db).await?;
 
-        res.last_insert_id
+        Ok(res.last_insert_id)
     }
 
     pub fn get_language(&self, language: &str) -> Option<&Arc<dyn Language>> {
@@ -124,13 +124,19 @@ impl<T: Game + 'static> GameRunner<T> {
         loop {
             async_std::task::sleep(Duration::from_secs(1)).await;
 
-            let players = Agent::find()
+            let players = match Agent::find()
                 .filter(agent::Column::InGame.eq(false))
                 .filter(agent::Column::Removed.eq(false))
                 .filter(agent::Column::Partial.eq(false))
                 .order_by_asc(SimpleExpr::FunctionCall(Func::random()))
                 .limit(self.game.num_players() as u64)
-                .all(&self.db).await.unwrap();
+                .all(&self.db).await {
+                    Ok(x) => x,
+                    Err(e) => {
+                        error!("Encountered error while selecting players! {}", e);
+                        continue;
+                    }
+                };
 
             debug!("Found {} available players ({:?})", players.len(), players);
 
@@ -156,7 +162,13 @@ impl<T: Game + 'static> GameRunner<T> {
                 let mut active: entities::agent::ActiveModel = p.into();
                 active.in_game = ActiveValue::Set(true);
                 active.update(&self.db)
-            })).await.into_iter().map(|x| x.unwrap()).collect();
+            })).await.into_iter().filter_map(|x| match x {
+                Ok(x) => Some(x),
+                Err(e) => {
+                    panic!("Encountered error while setting player active! Cannot recover! {}", e);
+                }
+            }).collect();
+
 
             let mut agents = vec![];
             let mut ids = vec![];
@@ -194,7 +206,9 @@ impl<T: Game + 'static> GameRunner<T> {
                         let displayed_error = format!("Error: {}\nStderr:\n{}", err, stderr_contents);
 
                         let stderr_store = random_file(RUN_DIR, ".error");
-                        async_std::fs::write(stderr_store.clone(), displayed_error.clone()).await.unwrap();
+                        if let Err(e) = async_std::fs::write(stderr_store.clone(), displayed_error.clone()).await {
+                            error!("Encountered error while saving error! {}", e);
+                        }
 
                         players[i].error_file = ActiveValue::Set(Some(stderr_store.clone()));
                         players[i].removed = ActiveValue::Set(true);
@@ -288,7 +302,7 @@ impl<T: Game + 'static> GameRunner<T> {
         }
     }
 
-    pub async fn get_score(&self, id: i32) -> Option<i32> {
-        Agent::find_by_id(id).one(&self.db).await.unwrap().map(|x| x.rating as i32)
+    pub async fn get_score(&self, id: i32) -> Result<Option<i32>, DbErr> {
+        Ok(Agent::find_by_id(id).one(&self.db).await?.map(|x| x.rating as i32))
     }
 }

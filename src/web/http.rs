@@ -2,6 +2,8 @@ use std::{collections::HashMap, fmt, str::FromStr, string::FromUtf8Error};
 
 use crate::util::asyncio::{AsyncReaderWrapper, AsyncWriterWrapper};
 
+use super::web_errors::WebError;
+
 #[derive(Debug, Copy, Clone)]
 pub enum Status {
     Continue,           //100
@@ -371,23 +373,17 @@ impl RequestPath {
         Ok(Self::new(path, query))
     }
 
-    pub fn parse_query<T: FromStr>(&self, key: &str) -> Result<T, Response> {
+    pub fn parse_query<T: FromStr>(&self, key: &str) -> Result<T, WebError> {
         match self.get(key)?.parse() {
             Ok(x) => Ok(x),
-            Err(_) => Err(Response::basic_error(
-                Status::BadRequest,
-                &format!("Could not parse parameter '{}'", key),
-            )),
+            Err(_) => Err(WebError::InvalidData(format!("Couldn't parse parameter '{}'", key))),
         }
     }
 
-    pub fn get(&self, key: &str) -> Result<&String, Response> {
+    pub fn get(&self, key: &str) -> Result<&String, WebError> {
         match self.query.get(key) {
             Some(s) => Ok(s),
-            None => Err(Response::basic_error(
-                Status::BadRequest,
-                &format!("Missing required parameter '{}'", key),
-            )),
+            None => Err(WebError::MissingParameter(format!("'{}'", key))),
         }
     }
 }

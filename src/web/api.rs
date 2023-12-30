@@ -9,7 +9,7 @@ use serde_json::{json, Value, map::Values, Map};
 
 use crate::{
     games::Game,
-    web::http::{Method, Request, Response, Status}, langs::{language::{Language, PreparedProgram}, get_all_languages}, entities::{self, user, agent}, util::{temp_file::random_file, RUN_DIR}, players::auto_exec::GameRunner, cleanup_files,
+    web::{http::{Method, Request, Response, Status}, web_errors::WebError}, langs::{language::{Language, PreparedProgram}, get_all_languages}, entities::{self, user, agent}, util::{temp_file::random_file, RUN_DIR}, players::auto_exec::GameRunner, cleanup_files,
 };
 
 use super::{profile::{generate_password, get_num_agents}, web_errors::{HttpResult, decode_utf8, ValueCast, parse_json_as_object, HttpErrorMap}};
@@ -100,7 +100,7 @@ pub struct AppState {
     page_engine: PageEngine,
 }
 
-async fn get_agent_leaderboard(state: AppState) -> String {
+async fn get_agent_leaderboard(state: AppState) -> HttpResult<String> {
     let mut json = Vec::new();
 
     let data = entities::prelude::Agent::find()
@@ -108,7 +108,7 @@ async fn get_agent_leaderboard(state: AppState) -> String {
         .filter(agent::Column::Partial.eq(false))
         .order_by_desc(agent::Column::Rating)
         .find_also_related(user::Entity)
-        .all(&state.db).await.unwrap();
+        .all(&state.db).await?;
 
 
     for (agent, maybe_owner) in data {
@@ -128,13 +128,13 @@ async fn get_agent_leaderboard(state: AppState) -> String {
         json.push(val);
     }
 
-    serde_json::to_string(&json).unwrap()
+    Ok(serde_json::to_string(&json)?)
 }
 
-async fn get_all_profiles(state: AppState) -> String {
+async fn get_all_profiles(state: AppState) -> HttpResult<String> {
     let mut json = Vec::new();
 
-    for profile in entities::prelude::User::find().all(&state.db).await.unwrap() {
+    for profile in entities::prelude::User::find().all(&state.db).await? {
         let val = json!({
             "id": profile.id,
             "username": profile.username,
@@ -146,7 +146,7 @@ async fn get_all_profiles(state: AppState) -> String {
         json.push(val);
     }
 
-    serde_json::to_string(&json).unwrap()
+    Ok(serde_json::to_string(&json)?)
 }
 
 fn get_file_type(path: &str) -> &'static str {
@@ -155,7 +155,10 @@ fn get_file_type(path: &str) -> &'static str {
         return "application/octet-stream";
     }
 
-    let ext = path.split(".").last().unwrap().to_ascii_lowercase();
+    let ext = match path.split(".").last() {
+        Some(x) => x,
+        None => "application/octet-stream"
+    }.to_ascii_lowercase();
 
     match ext.as_str() {
         "html" => "text/html",
@@ -188,31 +191,31 @@ fn get_file_type(path: &str) -> &'static str {
 
 async fn serve_file_to(path: &str) -> HttpResult<Response> {
     if path.contains("..") {
-        return Err(Response::basic_error(Status::BadRequest, "Invalid path"));
+        return Err(WebError::InvalidData("Invalid file path".to_string()));
     }
 
     const BASE_PATH: &'static str = "public";
 
-    let path = format!("{}/{}", BASE_PATH, path);
+    let full_path = format!("{}/{}", BASE_PATH, path);
 
-    let mut file = match async_std::fs::File::open(&path).await {
+    let mut file = match async_std::fs::File::open(&full_path).await {
         Ok(file) => file,
         Err(e) => {
-            println!("Error opening file {}: {}", path, e);
+            println!("Error opening file {}: {}", full_path, e);
 
-            return Err(Response::basic_error(Status::NotFound, "File not found"))
+            return Err(WebError::NotFound(format!("File '{}' was not found", path)))
         }
     };
 
     let mut buf = Vec::new();
 
     if let Err(e) = file.read_to_end(&mut buf).await {
-        println!("Error reading file {}: {}", path, e);
+        println!("Error reading file {}: {}", full_path, e);
 
-        return Err(Response::basic_error(Status::InternalServerError, "Error reading file"));
+        return Err(WebError::InternalServerError("Error reading file".to_string()));
     }
 
-    let file_type = get_file_type(&path);
+    let file_type = get_file_type(&full_path);
 
     let mut response = Response::new();
     response.set_status(Status::Ok);
@@ -256,28 +259,15 @@ fn is_user_authenticated(req: &Request, profile: &entities::user::Model) -> bool
     true
 }
 
-async fn get_user(req: &Request, state: &AppState) -> Option<entities::user::Model> {
-    let id = match req.path.query.get("id") {
-        Some(id) => {
-            match id.parse::<i32>() {
-                Ok(id) => Some(id),
-                Err(_) => None
-            }
-        }
-        None => None
-    };
+async fn get_user(req: &Request, state: &AppState) -> HttpResult<Option<entities::user::Model>> {
+    let id: i32 = req.path.parse_query("id")?;
 
-    if id == None {
-        return None;
-    }
+    let user = entities::prelude::User::find_by_id(id).one(&state.db).await?;
 
-    let id = id.unwrap();
-    let user = entities::prelude::User::find_by_id(id).one(&state.db).await.unwrap();
-
-    user
+    Ok(user)
 }
 
-async fn get_agent_data_as_json(agent: &agent::Model, include_error: bool, include_src: bool, db: &DatabaseConnection) -> serde_json::Value {
+async fn get_agent_data_as_json(agent: &agent::Model, include_error: bool, include_src: bool, db: &DatabaseConnection) -> HttpResult<serde_json::Value> {
     let mut data = json!({
         "id": agent.id,
         "name": agent.name,
@@ -293,7 +283,7 @@ async fn get_agent_data_as_json(agent: &agent::Model, include_error: bool, inclu
     if include_error {
         if let Some(error_file) = &agent.error_file {
             if Path::new(&error_file).exists().await {
-                let error = async_std::fs::read(error_file).await.unwrap();
+                let error = async_std::fs::read(error_file).await?;
                 let error = String::from_utf8(error).unwrap_or("Error file corrupted :(".to_string());
 
                 data.as_object_mut().unwrap().insert("error".to_string(), Value::String(error));
@@ -304,7 +294,7 @@ async fn get_agent_data_as_json(agent: &agent::Model, include_error: bool, inclu
     if include_src {
         if let Some(src_file) = &agent.source_file {
             if Path::new(&src_file).exists().await {
-                let src = async_std::fs::read(src_file).await.unwrap();
+                let src = async_std::fs::read(src_file).await?;
                 let src = String::from_utf8(src).unwrap_or("Source file corrupted (Invalid UTF-8)".to_string());
 
                 data.as_object_mut().unwrap().insert("src".to_string(), Value::String(src));
@@ -313,13 +303,13 @@ async fn get_agent_data_as_json(agent: &agent::Model, include_error: bool, inclu
     }
 
     if let Some(owner_id) = agent.owner_id {
-        if let Some(owner) = user::Entity::find_by_id(owner_id).one(db).await.unwrap() {
+        if let Some(owner) = user::Entity::find_by_id(owner_id).one(db).await? {
             data.as_object_mut().unwrap().insert("owner_id".to_string(), json!(owner_id));
             data.as_object_mut().unwrap().insert("owner".to_string(), json!(owner.username));
         }
     }
 
-    data
+    Ok(data)
 }
 
 async fn get_profile_data(req: &Request, state: &AppState) -> HttpResult<Response> {
@@ -336,7 +326,7 @@ async fn get_profile_data(req: &Request, state: &AppState) -> HttpResult<Respons
     let username = req.path.query.get("username");
 
     if username.is_none() && id.is_none() {
-        return Err(Response::basic_error(Status::NotFound, "Could not find desired user (Missing parameters)"));
+        return Err(WebError::InvalidData("Did not specify a username or a user id".to_string()));
     }
 
     let mut query = user::Entity::find();
@@ -349,10 +339,10 @@ async fn get_profile_data(req: &Request, state: &AppState) -> HttpResult<Respons
         query = query.filter(user::Column::Username.eq(username));
     }
 
-    let profile = query.one(&state.db).await.unwrap();
+    let profile = query.one(&state.db).await?;
 
     if profile.is_none() {
-        return Err(Response::basic_error(Status::NotFound, "Could not find desired user"));
+        return Err(WebError::NotFound("Could not find desired user".to_string()));
     }
     let profile = profile.unwrap();
 
@@ -371,10 +361,10 @@ async fn get_profile_data(req: &Request, state: &AppState) -> HttpResult<Respons
 
         let mut agents = Vec::new();
 
-        let related = profile.find_related(entities::prelude::Agent).all(&state.db).await.unwrap();
+        let related = profile.find_related(entities::prelude::Agent).all(&state.db).await?;
         
         for agent in related {
-            agents.push(get_agent_data_as_json(&agent, false, false, &state.db).await);
+            agents.push(get_agent_data_as_json(&agent, false, false, &state.db).await?);
         }
 
         data.insert("agents", json!(agents));
@@ -383,7 +373,7 @@ async fn get_profile_data(req: &Request, state: &AppState) -> HttpResult<Respons
     let mut res = Response::new();
     res.set_status(Status::Ok);
     res.set_header("Content-Type", "application/json");
-    res.set_body(serde_json::to_string(&data).unwrap().into_bytes());
+    res.set_body(serde_json::to_string(&data)?.into_bytes());
 
     Ok(res)
 }
@@ -395,8 +385,8 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         res.set_header("Location", "/pages/index.html");
 
         Ok(res)
-    } else if req.matches_path(&["pages"]) {
-        let path = req.path.path.get(1).unwrap(); //TODO: Error Handling
+    } else if req.matches_path(&["pages"]) && req.path.path.len() > 1 {
+        let path = req.path.path.get(1).unwrap();
         match state.page_engine.get_page(&path) {
             Some(x) => {
                 let mut res = Response::new();
@@ -407,12 +397,12 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
                 Ok(res)
             },
             None => {
-                Err(Response::basic_error(Status::NotFound, "Not found"))
+                Err(WebError::NotFound("Requested page was not found".to_string()))
             }
         }
     } else if req.matches_path(&["admin"]) {
         if !authenticate_admin(&req, &state) {
-            Err(Response::basic_error(Status::Unauthorized, "Unauthorized"))
+            Err(WebError::Unauthorized)
         } else if req.matches_path_exact(&["admin", "verify"]) {
             let mut res = Response::new();
             res.set_status(Status::Ok);
@@ -422,11 +412,11 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
             let mut res = Response::new();
             res.set_status(Status::Ok);
             res.set_header("Content-Type", "application/json");
-            res.set_body(get_all_profiles(state).await.into_bytes());
+            res.set_body(get_all_profiles(state).await?.into_bytes());
 
             Ok(res)
         } else {
-            Err(Response::basic_error(Status::NotFound, "Not found"))
+            Err(WebError::NotFound("Unknown admin route".to_string()))
         }
     } else if req.matches_path(&["public"]) {
         let path = req.path.path[1..].join("/");
@@ -436,7 +426,7 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         let mut res = Response::new();
         res.set_status(Status::Ok);
         res.set_header("Content-Type", "application/json");
-        res.set_body(get_agent_leaderboard(state).await.into_bytes());
+        res.set_body(get_agent_leaderboard(state).await?.into_bytes());
 
         Ok(res)
     } else if req.matches_path_exact(&["api", "profile"]) {
@@ -466,7 +456,7 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         let username = req.path.query.get("username");
     
         if username.is_none() && id.is_none() {
-            return Err(Response::basic_error(Status::NotFound, "Could not find desired user (Missing parameters)"));
+            return Err(WebError::InvalidData("Could not find desired user (Missing parameters)".to_string()));
         }
     
         let mut query = user::Entity::find();
@@ -479,10 +469,10 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
             query = query.filter(user::Column::Username.eq(username));
         }
     
-        let profile = query.one(&state.db).await.unwrap();
+        let profile = query.one(&state.db).await?;
 
         if profile.is_none() {
-            return Err(Response::basic_error(Status::NotFound, "Couldn't find user matching id"));
+            return Err(WebError::NotFound("Couldn't find user matching id or username".to_string()));
         }
         let profile = profile.unwrap();
 
@@ -512,7 +502,7 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         let mut res = Response::new();
         res.set_status(Status::Ok);
         res.set_header("Content-Type", "application/json");
-        res.set_body(serde_json::to_string(&arr).unwrap().into_bytes());
+        res.set_body(serde_json::to_string(&arr)?.into_bytes());
 
         Ok(res)
     } else if req.matches_path_exact(&["api", "agent"]) {
@@ -522,15 +512,15 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         let mut send_error: bool = req.path.parse_query("error").unwrap_or(false);
         let mut send_src: bool = req.path.parse_query("src").unwrap_or(false);
 
-        let agent = agent::Entity::find_by_id(agent_id).one(&state.db).await.unwrap();
+        let agent = agent::Entity::find_by_id(agent_id).one(&state.db).await?;
 
         if agent.is_none() {
-            return Err(Response::basic_error(Status::NotFound, "Agent not found"));
+            return Err(WebError::NotFound("Agent not found".to_string()));
         }
         let agent: agent::Model = agent.unwrap();
 
         if let Some(owner_id) = agent.owner_id {
-            if let Some(owner) = user::Entity::find_by_id(owner_id).one(&state.db).await.unwrap() {
+            if let Some(owner) = user::Entity::find_by_id(owner_id).one(&state.db).await? {
                 if !is_user_authenticated(&req, &owner) {
                     send_error = false;
                     send_src = false;
@@ -538,12 +528,12 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
             }
         }
 
-        let data = get_agent_data_as_json(&agent, send_error, send_src, &state.db).await;
+        let data = get_agent_data_as_json(&agent, send_error, send_src, &state.db).await?;
 
         let mut res = Response::new();
         res.set_status(Status::Ok);
         res.set_header("Content-Type", "application/json");
-        res.set_body(serde_json::to_string(&data).unwrap().into_bytes());
+        res.set_body(serde_json::to_string(&data)?.into_bytes());
 
         Ok(res)
     } else if req.matches_path_exact(&["api", "list_files"]) {
@@ -568,12 +558,12 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
         let mut res = Response::new();
         res.set_status(Status::Ok);
         res.set_header("Content-Type", "application/json");
-        res.set_body(serde_json::to_string(&result).unwrap().into_bytes());
+        res.set_body(serde_json::to_string(&result)?.into_bytes());
 
         Ok(res)
     } else if req.matches_path(&["client_files"]) && req.path.path.len() == 3 {
-        let target_lang = urlencoding::decode(&req.path.path[1]).unwrap().to_string();
-        let file = urlencoding::decode(&req.path.path[2]).unwrap().to_string();
+        let target_lang = urlencoding::decode(&req.path.path[1])?.to_string();
+        let file = urlencoding::decode(&req.path.path[2])?.to_string();
 
         debug!("Client wants file {} {}", target_lang, file);
 
@@ -581,7 +571,7 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
             if lang.name() == target_lang {
                 let res = match files.files.get(&file) {
                     Some(x) => x,
-                    None => return Err(Response::basic_error(Status::NotFound, "Not found"))
+                    None => return Err(WebError::NotFound("Requested client file not found".to_string()))
                 };
 
                 let mut response = Response::new();
@@ -594,24 +584,24 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
             }
         }
 
-        Err(Response::basic_error(Status::NotFound, "Not found"))
+        Err(WebError::NotFound("Requested language not found".to_string()))
     } else {
-        Err(Response::basic_error(Status::NotFound, "Not found"))
+        Err(WebError::NotFound("Route not found".to_string()))
     }
 }
 
 async fn reset_password(req: &Request, state: &AppState) -> HttpResult<Response> {
-    let user = get_user(req, state).await;
+    let user = get_user(req, state).await?;
 
     if user.is_none() {
-        return Err(Response::basic_error(Status::NotFound, "Invalid id"));
+        return Err(WebError::NotFound("Couldn't find user with id".to_string()));
     }
 
     let user = user.unwrap();
 
     let mut active: entities::user::ActiveModel = user.into();
     active.password = ActiveValue::Set(generate_password());
-    let user = active.update(&state.db).await.unwrap();
+    let user = active.update(&state.db).await?;
 
     let mut res = Response::new();
     res.set_status(Status::Ok);
@@ -624,19 +614,18 @@ async fn reset_password(req: &Request, state: &AppState) -> HttpResult<Response>
 async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpResult<Response>{
     if req.matches_path(&["admin"]) {
         if !authenticate_admin(&req, &state) {
-            Err(Response::basic_error(Status::Unauthorized, "Unauthorized"))
+            Err(WebError::Unauthorized)
         } else if req.matches_path_exact(&["admin", "new_profile"]) {
             let username = req.path.get("username")?;
 
             let other = entities::prelude::User::find()
                 .filter(user::Column::Username.eq(username))
                 .one(&state.db)
-                .await
-                .unwrap();
+                .await?;
 
             //Check if username is already taken
             if other.is_some() {
-                return Err(Response::basic_error(Status::BadRequest, "Username already taken"));
+                return Err(WebError::InvalidData("already taken".to_string()));
             }
 
             let num_agents_allowed = req.path.parse_query("agents")?;
@@ -648,52 +637,52 @@ async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpRes
                 ..Default::default()
             };
 
-            user::Entity::insert(profile).exec(&state.db).await.unwrap();
+            user::Entity::insert(profile).exec(&state.db).await?;
 
             let mut res = Response::new();
             res.set_status(Status::Ok);
 
             Ok(res)
         } else if req.matches_path_exact(&["admin", "delete_profile"]) {
-            let profile = get_user(&req, &state).await;
+            let profile = get_user(&req, &state).await?;
             if let Some(profile) = profile {
                 info!("Deleting profile: id: {:?}, username: {:?}", profile.id, profile.username);
 
                 agent::Entity::delete_many()
                     .filter(agent::Column::OwnerId.eq(profile.id))
                     .exec(&state.db)
-                    .await.unwrap();
+                    .await?;
 
                 let profile: user::ActiveModel = profile.into();
-                user::Entity::delete(profile).exec(&state.db).await.unwrap();
+                user::Entity::delete(profile).exec(&state.db).await?;
 
                 let mut res = Response::new();
                 res.set_status(Status::Ok);
                     
                 Ok(res)
             } else {
-                Err(Response::basic_error(Status::NotFound, "User id not found"))
+                Err(WebError::NotFound("User id not found".to_string()))
             }
         } else if req.matches_path_exact(&["admin", "set_profile_agents"]) {
-            let profile = get_user(&req, &state).await;
+            let profile = get_user(&req, &state).await?;
             let num_agents_allowed = req.path.parse_query("agents")?;
             if let Some(profile) = profile {
                 let mut profile: user::ActiveModel = profile.into();
                 profile.num_agents_allowed = ActiveValue::Set(num_agents_allowed);
-                profile.update(&state.db).await.unwrap();
+                profile.update(&state.db).await?;
 
                 let mut res = Response::new();
                 res.set_status(Status::Ok);
                     
                 Ok(res)
             } else {
-                Err(Response::basic_error(Status::NotFound, "User id not found"))
+                Err(WebError::NotFound("User id not found".to_string()))
             }
         } else if req.matches_path_exact(&["admin", "full_reset"]) {
             warn!("Doing full reset!");
 
-            entities::agent::Entity::delete_many().exec(&state.db).await.unwrap();
-            entities::user::Entity::delete_many().exec(&state.db).await.unwrap();
+            entities::agent::Entity::delete_many().exec(&state.db).await?;
+            entities::user::Entity::delete_many().exec(&state.db).await?;
 
             let mut res = Response::new();
             res.set_status(Status::Ok);
@@ -701,7 +690,7 @@ async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpRes
         } else if req.matches_path_exact(&["admin", "agents_reset"]) {
             warn!("Deleting all agents!");
 
-            entities::agent::Entity::delete_many().exec(&state.db).await.unwrap();
+            entities::agent::Entity::delete_many().exec(&state.db).await?;
 
             let mut res = Response::new();
             res.set_status(Status::Ok);
@@ -717,7 +706,7 @@ async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpRes
             entities::agent::Entity::update_many()
                 .set(active)
                 .exec(&state.db)
-                .await.unwrap();
+                .await?;
 
             let mut res = Response::new();
             res.set_status(Status::Ok);
@@ -729,26 +718,26 @@ async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpRes
             res.set_status(Status::Ok);
             Ok(res)
         } else {
-            Err(Response::basic_error(Status::NotFound, "Not found"))
+            Err(WebError::NotFound("Admin route not found".to_string()))
         }
     } else if req.matches_path_exact(&["api", "reset_password"]) {
         reset_password(&req, &state).await
     } else if req.matches_path_exact(&["api", "add_agent"]) {
-        let profile = get_user(&req, &state).await;
+        let profile = get_user(&req, &state).await?;
 
         if profile.is_none() {
-            return Err(Response::basic_error(Status::NotFound, "User id not found"));
+            return Err(WebError::NotFound("User id not found".to_string()));
         }
         let profile = profile.unwrap();
 
         if !is_user_authenticated(&req, &profile) {
-            return Err(Response::basic_error(Status::Unauthorized, "Unauthorized"));
+            return Err(WebError::Unauthorized);
         }
 
         let num_agents = get_num_agents(&profile, &state.db).await;
 
         if num_agents >= profile.num_agents_allowed as _ {
-            return Err(Response::basic_error(Status::Conflict, &format!("You have already used {} out of your {} available agent slot(s)! You can delete some of your agents to free these up!", num_agents, profile.num_agents_allowed)));
+            return Err(WebError::InvalidData(format!("You have already used {} out of your {} available agent slot(s)! You can delete some of your agents to free these up!", num_agents, profile.num_agents_allowed)));
         }
 
         let data = decode_utf8(req.body.clone())?;
@@ -762,22 +751,22 @@ async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpRes
         let language = state.languages.iter().filter(|l| l.id() == language_id).next();
         let language = match language {
             Some(l) => l,
-            None => return Err(Response::basic_error(Status::BadRequest, &format!("Unknown language {}", language_id)))
+            None => return Err(WebError::InvalidData(format!("Unknown language {}", language_id)))
         }.clone();
 
         let in_use = agent::Entity::find()
             .filter(agent::Column::Name.eq(name))
             .one(&state.db)
-            .await.unwrap().is_some();
+            .await?.is_some();
 
         if in_use {
-            return Err(Response::basic_error(Status::BadRequest, &format!("Agent name already used!")));
+            return Err(WebError::InvalidData(format!("Agent name already used!")));
         }
 
         let mut program = PreparedProgram::new();
         let src_file = random_file(RUN_DIR, ".src");
 
-        async_std::fs::write(&src_file, &src).await.unwrap();
+        async_std::fs::write(&src_file, &src).await?;
 
         let id = state.executor.add_player(
             name.to_string(), 
@@ -786,20 +775,30 @@ async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpRes
             Some(src_file),
             Some(profile.id),
             true
-        ).await;
+        ).await?;
 
         let mut res = Response::new();
         res.set_status(Status::Ok);
         res.set_header("Content-Type", "application/json");
         res.set_body(serde_json::to_string(&json!({
             "agent_id": id
-        })).unwrap().into_bytes());
+        }))?.into_bytes());
 
         let itf = state.executor.itf.clone();
         let db = state.db.clone();
         async_std::task::spawn(async move {
             let result = language.prepare(&src, &mut program, &itf, state.executor.sandboxes.clone()).await;
-            let mut agent: agent::ActiveModel = agent::Entity::find_by_id(id).one(&db).await.unwrap().unwrap().into();
+            let mut agent: agent::ActiveModel = match agent::Entity::find_by_id(id).one(&db).await {
+                Ok(Some(x)) => x,
+                Ok(None) => {
+                    error!("Couldn't find agent that needed to be compiled!");
+                    return;
+                },
+                Err(e) => {
+                    error!("Encountered error while finding agent that needed to be compiled! {}", e);
+                    return;
+                }
+            }.into();
 
             match result {
                 Ok(()) => {
@@ -807,27 +806,32 @@ async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpRes
                 },
                 Err(e) => {
                     let error_file = random_file(RUN_DIR, ".compile-error");
-                    async_std::fs::write(&error_file, &e).await.unwrap();
+                    
+                    if let Err(e) = async_std::fs::write(&error_file, e).await {
+                        error!("Encountered error while writing compile error! {}", e);
+                    }
 
                     agent.removed = ActiveValue::Set(true);
                     agent.error_file = ActiveValue::Set(Some(error_file));
                 }
             }
 
-            agent.update(&db).await.unwrap();
+            if let Err(e) = agent.update(&db).await {
+                error!("Encountered error while updating agent! {}", e);
+            }
         });
 
         Ok(res)
     } else if req.matches_path_exact(&["api", "set_colour"]) {
-        let profile = get_user(&req, &state).await;
+        let profile = get_user(&req, &state).await?;
 
         if profile.is_none() {
-            return Err(Response::basic_error(Status::NotFound, "User id not found"));
+            return Err(WebError::InvalidData("User id not found".to_string()));
         }
         let profile = profile.unwrap();
 
         if !is_user_authenticated(&req, &profile) {
-            return Err(Response::basic_error(Status::Unauthorized, "Unauthorized"));
+            return Err(WebError::Unauthorized);
         }
 
         let agent_id: i32 = req.path.parse_query("agent")?;
@@ -836,10 +840,10 @@ async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpRes
         let g: u8 = req.path.parse_query("g")?;
         let b: u8 = req.path.parse_query("b")?;
 
-        let agent = agent::Entity::find_by_id(agent_id).one(&state.db).await.unwrap();
+        let agent = agent::Entity::find_by_id(agent_id).one(&state.db).await?;
 
         if agent.is_none() {
-            return Err(Response::basic_error(Status::NotFound, "Not found"));
+            return Err(WebError::NotFound("Agent not found".to_string()));
         }
 
         let color = format!("#{:02X}{:02X}{:02X}", r, g, b);
@@ -848,40 +852,40 @@ async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpRes
         let mut active: agent::ActiveModel = agent.unwrap().into();
 
         active.colour = ActiveValue::Set(color);
-        active.update(&state.db).await.unwrap();
+        active.update(&state.db).await?;
 
         let mut res = Response::new();
         res.set_status(Status::Ok);
 
         Ok(res)
     } else if req.matches_path_exact(&["api", "delete_agent"]) {
-        let profile = get_user(&req, &state).await;
+        let profile = get_user(&req, &state).await?;
 
         if profile.is_none() {
-            return Err(Response::basic_error(Status::NotFound, "User id not found"));
+            return Err(WebError::NotFound("Profile not found".to_string()));
         }
         let profile = profile.unwrap();
 
         if !is_user_authenticated(&req, &profile) {
-            return Err(Response::basic_error(Status::Unauthorized, "Unauthorized"));
+            return Err(WebError::Unauthorized);
         }
 
         let agent_id: i32 = req.path.parse_query("agent")?;
 
-        let agent = agent::Entity::find_by_id(agent_id).one(&state.db).await.unwrap();
+        let agent = agent::Entity::find_by_id(agent_id).one(&state.db).await?;
 
         if agent.is_none() {
-            return Err(Response::basic_error(Status::NotFound, "Agent not found"));
+            return Err(WebError::NotFound("Agent not found".to_string()));
         }
 
-        agent.unwrap().delete(&state.db).await.unwrap();
+        agent.unwrap().delete(&state.db).await?;
 
         let mut res = Response::new();
         res.set_status(Status::Ok);
 
         Ok(res)
     } else {
-        Err(Response::basic_error(Status::NotFound, "Not found"))
+        Err(WebError::NotFound("Route not found".to_string()))
     }
 }
 
@@ -906,14 +910,15 @@ async fn handle_conn(mut stream: TcpStream, addr: SocketAddr, state: AppState) {
         Method::Get => route_get(addr, request, state).await,
         Method::Post => route_post(addr, request, state).await,
 
-        _ => Err(Response::basic_error(Status::NotImplemented, "Method not implemented"))
+        _ => Err(WebError::InvalidMethod)
     };
 
     match result {
         Ok(res) => res.write_async(&mut stream).await.ignore(),
         Err(res) => {
-            info!("Request [{}] was unsuccesful ({})", addr, res.status);
-            res.write_async(&mut stream).await.ignore();
+            let response = res.into_response();
+            info!("Request [{}] was unsuccesful ({})", addr, response.status);
+            response.write_async(&mut stream).await.ignore();
         }
     }
 }
@@ -938,7 +943,7 @@ fn generate_admin_password() -> String {
 pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, db: DatabaseConnection) -> std::io::Result<()> {
     let addr = SocketAddr::from(([0, 0, 0, 0], 42069));
 
-    let listener = TcpListener::bind(addr).await.unwrap();
+    let listener = TcpListener::bind(addr).await?;
 
     let state = AppState {
         executor,
