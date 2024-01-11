@@ -312,6 +312,7 @@ pub struct RunningJob {
     pub stderr: TempFile,
 
     killed: bool,
+    attempt_kill: bool,
 
     error_message: Option<String>,
     on_exit: Option<Box<dyn FnOnce(&mut RunningJob) + Sync + Send>>,
@@ -438,6 +439,8 @@ impl RunningJob {
             stderr,
 
             killed: false,
+            attempt_kill: false,
+            
             error_message: None,
 
             on_exit,
@@ -530,6 +533,8 @@ impl RunningJob {
         if self.killed {
             return Ok(());
         }
+
+        self.attempt_kill = true;
 
         let pid = self.child.id();
 

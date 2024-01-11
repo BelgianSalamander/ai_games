@@ -201,7 +201,7 @@ impl<T: Game + 'static> GameRunner<T> {
 
                 for i in 0..agents.len() {
                     if let Some(err) = agents[i].get_error() {
-                        const MAX_READ: usize = 10 * 1024;
+                        const MAX_READ: usize = 10 * 1024 * 1024;
 
                         let stderr_contents = agents[i].read_stderr(Some(MAX_READ)).await;
                         let displayed_error = format!("Error: {}\nStderr:\n{}", err, stderr_contents);

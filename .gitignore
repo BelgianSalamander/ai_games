@@ -7,3 +7,4 @@
 **/target
 **/.vscode
 *.db
+*.debug.rs

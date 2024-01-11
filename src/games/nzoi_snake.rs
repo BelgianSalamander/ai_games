@@ -1,6 +1,7 @@
 use std::{time::Duration, collections::VecDeque};
 
 use async_trait::async_trait;
+use log::{info, warn};
 use proc_gamedef::make_server;
 use rand::Rng;
 
@@ -71,6 +72,9 @@ impl Game for NzoiSnake {
         let mut num_dead = 0;
         let mut scores = vec![0.0; self.num_players()];
 
+        let size_data = (self.rows(), self.cols());
+        reporter.update(&size_data, "dimensions");
+
         for (i, snake) in self.snakes.iter().enumerate() {
             for (row, col) in snake {
                 grid[*row][*col] = i as i32 +1;
@@ -79,6 +83,7 @@ impl Game for NzoiSnake {
 
             match agents[i].init(&(i as i32 + 1), self.rows() as u32, self.cols() as u32, self.num_players() as u32).await {
                 Err(e) => {
+                    warn!("Snake init error!");
                     reporter.update(&(i+1), "init_error").await;
                     agents[i].set_error(e.to_string());
                     dead[i] = true;
@@ -117,6 +122,8 @@ impl Game for NzoiSnake {
                 }
             }
 
+            info!("Getting Moves!");
+
             let futures = agents.iter_mut().enumerate().filter_map(|(i, agent)| 
                 if dead[i] {
                     None
@@ -129,6 +136,8 @@ impl Game for NzoiSnake {
 
             waiter.wait().await;
 
+            info!("Got moves!");
+
             let alive_players: Vec<_> = (0..self.num_players()).filter(|x| !dead[*x]).collect();
             let mut new_positions = vec![];
             let mut to_kill = vec![];
@@ -136,6 +145,7 @@ impl Game for NzoiSnake {
             for (i, res) in alive_players.iter().zip(moves) {
                 match res {
                     Err(e) => {
+                        warn!("Snake crashed! {:?}", e);
                         reporter.update(&(i+1), "player_error").await;
                         agents[*i].set_error(e.clone());
                         dead[*i] = true;
@@ -214,11 +224,14 @@ impl Game for NzoiSnake {
             reporter.update(&scores, "scores").await;
         }
 
+        println!("Killing snakes!");
+
         for agent in agents {
             agent.kill().await;
         }
 
-        scores
+        //scores
+        vec![0.0, 0.0]
     }
 }
 

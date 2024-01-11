@@ -284,7 +284,7 @@ pub fn write_decoder(
             *discriminant += 1;
 
             out.push_str(&format!(
-                "{indent_str}uint32_t {new_size};\n{indent_str}readData<uint32_t>({new_size});\n"
+                "{indent_str}uint32_t {new_size};\n{indent_str}readData<uint32_t>({new_size});\n{indent_str}{base_addr}.resize({new_size});\n"
             ));
             out.push_str(&format!(
                 "{indent_str}for (int i = 0; i < {new_size}; i++) {{\n"
@@ -634,6 +634,7 @@ impl Language for CppLang {
         interactor.push_str(
             "
 int main(){
+    std::cerr << \"Starting Interactor!\" << std::endl;
     while(true) {
         uint8_t func_id;
         readData<uint8_t>(func_id);
@@ -647,13 +648,17 @@ int main(){
             }
 
             interactor.push_str(&format!("if (func_id == {idx}) {{ // {function_name}\n"));
+            interactor.push_str(&format!("std::cerr << \"Calling function {}\" << std::endl;\n", function_name));
 
             for (name, ty) in &signature.args {
                 let decl = type_as_inline_cpp(ty);
                 interactor.push_str(&format!("            {decl} param_{name};\n"));
                 let mut x = 0;
+                interactor.push_str(&format!("std::cerr << \"  Reading in {}\" << std::endl;\n", name));
                 write_decoder(ty, 3, format!("param_{name}"), &mut interactor, &mut x);
             }
+
+            interactor.push_str(&format!("std::cerr << \"  Calling!\" << std::endl;\n"));
 
             if signature.args.len() > 0 {
                 interactor.push_str("            \n");
@@ -763,7 +768,7 @@ int main(){
         let mut compile_job: crate::isolate::sandbox::RunningJob = sandbox.launch(
             "/usr/bin/g++".to_string(),
             vec![
-                //"-DVERBOSE_IO".to_string(),
+                "-DVERBOSE_IO".to_string(),
                 "-I/client_files/".to_string(),
                 "-O2".to_string(),
                 "-Wall".to_string(),
@@ -797,6 +802,8 @@ int main(){
 
         if !status.success() {
             return Err(compile_job.stderr.read_as_string().await);
+        } else {
+            println!("Compile result\n\n{}", compile_job.stderr.read_as_string().await);
         }
 
         Ok(())

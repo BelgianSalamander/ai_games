@@ -112,7 +112,7 @@ fn make_struct_fields(fields: &StructFields, span: &Span) -> TokenTree {
 
 fn make_serializer(ty: &Type, val: &str, out: &str) -> String {
     match ty {
-        Type::Builtin(BuiltinType::Str) => format!("{{let bytes = {val}.as_bytes();\n{out}.extend(&bytes.len().to_le_bytes());\n{out}.extend(bytes);}}", val=val, out=out),
+        Type::Builtin(BuiltinType::Str) => format!("{{let bytes = {val}.as_bytes();\n{out}.extend(&(bytes.len() as u32).to_le_bytes());\n{out}.extend(bytes);}}", val=val, out=out),
         Type::Builtin(_) => format!("{out}.extend({val}.to_le_bytes());", val=val, out=out),
         Type::NamedType(name) => format!("serialize_{name}(&{val}, {out});", val=val, out=out, name=name),
         Type::Array(ty, _) => {
@@ -127,7 +127,7 @@ fn make_serializer(ty: &Type, val: &str, out: &str) -> String {
         Type::DynamicArray(ty) => {
             let mut res = String::new();
 
-            res.push_str(&format!("{out}.extend(&{val}.len().to_le_bytes());", val=val, out=out));
+            res.push_str(&format!("{out}.extend(&({val}.len() as u32).to_le_bytes());", val=val, out=out));
 
             res.push_str(&format!("for x in ({}).iter() {{\n", val));
             res.push_str(&make_serializer(ty, "x", out));
@@ -569,7 +569,7 @@ pub fn make_server(tokens: TokenStream) -> TokenStream {
     let res = make_interface(&game_interface, &span);
 
     let code = res.to_string();
-    //std::fs::write(format!("{}.debug.rs", path.to_str().unwrap()), code).unwrap();
+    std::fs::write(format!("{}.debug.rs", path.to_str().unwrap()), code).unwrap();
 
     res
 }

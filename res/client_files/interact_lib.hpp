@@ -1,5 +1,5 @@
 #ifndef _INTERACT_LIB_HPP
-#define _INTERACT_LIN_HPP
+#define _INTERACT_LIB_HPP
 #include <iostream>
 #include <stdio.h>
 #include <unistd.h>
@@ -44,7 +44,7 @@ void writeBytes(int n, void* bytes) {
 #ifdef VERBOSE_IO
     std::cerr << "  Writing " << n << " bytes: [ ";
 
-    for (int i = 0; i <= n; i++) {
+    for (int i = 0; i < n; i++) {
         std::cerr << +((uint8_t*) bytes)[i] << " ";
     }
 
@@ -81,20 +81,24 @@ void reverseEndinness(int n, void* data) {
 }
 
 void makeSystemEndian(int n, void* data) {
-    if (IS_BIG_ENDIAN) return;
+    /*if (IS_BIG_ENDIAN) return;
 
-    reverseEndinness(n, data);
+    reverseEndinness(n, data);*/
 }
 
 void makeBigEndian(int n, void* data) {
-    if (IS_BIG_ENDIAN) return;
+    /*if (IS_BIG_ENDIAN) return;
 
-    reverseEndinness(n, data);
+    reverseEndinness(n, data);*/
 }
 
 template<typename T>
 void readData(T& out) {
     constexpr size_t SIZE = sizeof(T);
+
+#ifdef VERBOSE_IO
+    std::cerr << "Trying to read " << sizeof(T) << " bytes" << std::endl;
+#endif
     
     uint8_t* buffer = (uint8_t*) &out;
     readBytes(SIZE, buffer);
