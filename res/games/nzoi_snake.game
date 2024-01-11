@@ -1,0 +1,15 @@
+type GridCell = i32;
+
+type Pos = struct {
+    row: i32,
+    col: i32
+};
+
+type Move = enum {
+    Up, Down, Left, Right
+};
+
+function init = (snake_id: GridCell, num_rows: u32, num_cols: u32, num_snakes: u32);
+
+
+function get_move = (grid: [[GridCell]], head: Pos) -> Move;

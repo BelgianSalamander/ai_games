@@ -563,8 +563,13 @@ pub fn make_server(tokens: TokenStream) -> TokenStream {
 
     let name = name.replace(" ", "_").replace("/", "_").replace(".", "_");
 
-    let content = std::fs::read_to_string(path).unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
     let game_interface = parse_game_interface(&content, name).unwrap();
 
-    make_interface(&game_interface, &span)
+    let res = make_interface(&game_interface, &span);
+
+    let code = res.to_string();
+    //std::fs::write(format!("{}.debug.rs", path.to_str().unwrap()), code).unwrap();
+
+    res
 }

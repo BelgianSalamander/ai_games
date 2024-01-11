@@ -58,6 +58,7 @@ pub struct GameRunner<T: Game + 'static> {
 impl<T: Game + 'static> GameRunner<T> {
     pub async fn new(game: T, name: &str, num_sandboxes: usize, db: DatabaseConnection) -> Self {
         let itf_path = format!("res/games/{}.game", name);
+        println!("Loading interface at {}", itf_path);
         let itf = std::fs::read_to_string(itf_path).unwrap();
         let itf = parse_game_interface(&itf, name.to_string()).unwrap();
 

@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use crate::{isolate::sandbox::RunningJob, players::reporting::GameReporter};
 
 pub mod oxo;
+pub mod nzoi_snake;
 
 pub async fn await_seconds<Fut, T>(fut: Fut, seconds: f32) -> Result<T, String>
 where

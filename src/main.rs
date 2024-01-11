@@ -1,3 +1,4 @@
+use async_std::fs::File;
 use gamedef::{game_interface::GameInterface, parser::parse_game_interface};
 use log::{info, debug};
 use proc_gamedef::make_server;
@@ -5,7 +6,7 @@ use sea_orm::{Database, EntityTrait, QueryFilter, ColumnTrait, DatabaseConnectio
 use util::DATABASE_URL;
 use std::{path::{Path, PathBuf}, process::exit, sync::Arc, env, collections::HashSet};
 
-use crate::{games::{oxo::TicTacToe, Game}, util::RUN_DIR, web::{api, game_reporter::GameReporter}, entities::agent, players::{auto_exec::GameRunner}, langs::{cpp::CppLang, language::Language}};
+use crate::{games::{oxo::TicTacToe, Game, nzoi_snake::NzoiSnake}, util::RUN_DIR, web::{api, game_reporter::GameReporter}, entities::agent, players::{auto_exec::GameRunner}, langs::{cpp::CppLang, language::Language}};
 
 pub mod isolate;
 pub mod util;
@@ -106,17 +107,12 @@ fn main() {
     info!("Clearing tmp/ directory");
     std::fs::remove_dir_all("./tmp").unwrap_or(());
 
-    let itf_path = "res/games/snake.game";
-    let itf = std::fs::read_to_string(itf_path).unwrap();
-    let itf = parse_game_interface(&itf, "snake".to_string()).unwrap();
-    let l = CppLang;
-    l.prepare_files(&itf);
-
     if !Path::new(RUN_DIR).is_dir() {
         std::fs::create_dir(RUN_DIR).unwrap();
     }
 
-    let game: Box<dyn Game> = Box::new(TicTacToe);
+    let mut file = std::fs::File::open("res/configs/snake_small.json").unwrap();
+    let game: Box<dyn Game> = Box::new(serde_json::from_reader::<std::fs::File, NzoiSnake>(file).unwrap());
 
     async_std::task::block_on(async {
         let db = Database::connect(DATABASE_URL).await.unwrap();
@@ -127,7 +123,7 @@ fn main() {
 
         cleanup_files(&db).await;
 
-        let runner = Arc::new(GameRunner::new(game, "tic_tac_toe", 10, db).await);
+        let runner = Arc::new(GameRunner::new(game, "nzoi_snake", 10, db).await);
 
         let mut reporter = GameReporter::new(&runner).await;
         let reporter_inner = reporter.inner.clone();
