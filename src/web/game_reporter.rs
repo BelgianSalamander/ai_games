@@ -1,8 +1,7 @@
 use std::{collections::HashMap, net::SocketAddr, pin::Pin, sync::Arc, time::Duration, ops::Index};
 
-use async_std::{sync::Mutex, net::{TcpListener, TcpStream}};
+use async_std::{sync::Mutex, net::{TcpListener, TcpStream}, io::WriteExt};
 use async_trait::async_trait;
-use async_tungstenite::{accept_async, WebSocketStream, tungstenite::Message};
 use futures::{StreamExt, SinkExt, FutureExt};
 use log::{error, info};
 use serde_json::{Value, json};
@@ -15,6 +14,8 @@ use crate::{
         reporting::{EndCallback, StartCallback, UpdateCallback},
     },
 };
+
+use super::{http::{Request, Response, Status}, web_errors::WebError};
 
 #[derive(Debug)]
 struct GameRecord {
@@ -45,15 +46,15 @@ impl GameConnectRequest {
 
 #[derive(Debug)]
 struct Spectator {
-    ws: WebSocketStream<TcpStream>,
-    game_request: Option<GameConnectRequest>,
+    stream: TcpStream,
+    game_request: GameConnectRequest,
     curr_game: Option<usize>,
 
     error: bool
 }
 
 impl Spectator {
-    async fn send_packet(&mut self, kind: &str, data: &Value) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_packet(&mut self, kind: &str, data: &Value) -> Result<(), std::io::Error> {
         let packet = json!({
             "kind": kind,
             "data": data
@@ -61,12 +62,16 @@ impl Spectator {
 
         let s = packet.to_string();
 
-        self.ws.send(Message::Text(s)).await?;
+        let mut bytes = "data: ".as_bytes().to_vec();
+        bytes.extend(s.into_bytes());
+        bytes.extend("\n\n".as_bytes());
+
+        self.stream.write_all(&bytes).await?;
 
         Ok(())
     }
 
-    pub async fn connect_to_game(&mut self, game: &GameRecord)  -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn connect_to_game(&mut self, game: &GameRecord)  -> Result<(), std::io::Error> {
         let data = json!({
             "kind": game.kind,
             "players": game.players,
@@ -76,16 +81,16 @@ impl Spectator {
         self.send_packet("connect", &data).await
     }
 
-    pub async fn end_game(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn end_game(&mut self) -> Result<(), std::io::Error> {
         self.send_packet("end", &Value::Null).await
     }
 
-    pub async fn update_game(&mut self, data: &Value) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn update_game(&mut self, data: &Value) -> Result<(), std::io::Error> {
         self.send_packet("update", data).await
     }
 }
 
-struct SharedInner {
+pub struct SharedInner {
     games: HashMap<usize, GameRecord>,
     by_player: HashMap<i32, usize>,
     spectators: Vec<Arc<Mutex<Spectator>>>
@@ -105,70 +110,71 @@ impl SharedInner {
         }
     }
 
-    async fn handle_ws(&mut self, ws: WebSocketStream<TcpStream>) {
-        self.spectators.push(Arc::new(Mutex::new(Spectator {
-            ws,
-            game_request: None,
+    pub async fn handle_stream(&mut self, mut stream: TcpStream, request: &Request) {
+        let data = match request.path.get("req").map(|x| urlencoding::decode(&x)) {
+            Ok(Ok(x)) => x,
+            Ok(Err(e)) => {
+                let response = WebError::InvalidData(format!("Couldn't decode req {:?}", e)).into_response();
+                response.write_async(&mut stream).await;
+                return;
+            }
+            Err(e) => {
+                let response = e.into_response();
+                response.write_async(&mut stream).await;
+                return;
+            }
+        }.to_string();
+        
+        let req = match serde_json::from_str::<GameConnectRequest>(&data) {
+            Ok(x) => x,
+            Err(e) => {
+                let response = WebError::InvalidData(format!("Invalid connction request! {:?}", e)).into_response();
+                response.write_async(&mut stream).await;
+                return;
+            }
+        };
+
+        let spectator = Arc::new(Mutex::new(Spectator {
+            stream,
+            game_request: req,
             curr_game: None,
             error: false
-        })));
-    }
+        }));
 
-    async fn check_ws(&mut self) {
-        'outer: for spectator in &self.spectators {
-            let mut lock = spectator.lock().await;
-            if lock.error {
-                continue;
-            }
-            
-            match lock.ws.next().now_or_never() {
-                None | Some(None) => {},
-                Some(Some(Err(e))) => {
-                    error!("WS Error {:?}", e);
-                    lock.error = true;
-                    continue 'outer;
-                },
-                Some(Some(Ok(Message::Text(s)))) => {
-                    if let Ok(req) = serde_json::from_str::<GameConnectRequest>(&s) {
-                        info!("Received game connect request {:?}", req);
-                        lock.game_request = Some(req);
+        let mut lock = spectator.lock().await;
 
-                        let mut remove_from = None;
+        let mut response = Response::new();
+        response.set_status(Status::Ok);
 
-                        for (id, game) in &mut self.games {
-                            if Some(*id) != lock.curr_game && req.matches(game) {
-                                if let Err(e) = lock.connect_to_game(game).await {
-                                    error!("WS Error {:?}", e);
-                                    lock.error = true;
-                                    continue 'outer;
-                                }
+        /*
+        Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive */
 
-                                remove_from =  lock.curr_game.replace(*id);
+        response.set_header("Content-Type", "text/event-stream");
+        response.set_header("Cache-Control", "no-cache");
+        response.set_header("Connection", "keep-alive");
 
-                                lock.game_request = None;
+        let _ = response.write_async(&mut lock.stream).await;
 
-                                game.spectators.push(spectator.clone());
-
-                                break;
-                            }
-                        }
-
-                        if let Some(other_game) = remove_from {
-                            if let Some(record) = self.games.get_mut(&other_game) {
-                                record.spectators.retain(move |x| !Arc::ptr_eq(x, spectator));
-                            }
-                        }
-                    } else {
-                        error!("Invalid game connect request {:?}", s);
-                    }
-                },
-                x => {
-                    error!("Unexpected message from ws {:?}", x);
-                    lock.error = true;
+        for (id, game) in &mut self.games {
+            if lock.game_request.matches(game) {
+                if let Err(e) = lock.connect_to_game(game).await {
+                    let response = WebError::InternalServerError(format!("Error while conncting to game {:?}", e)).into_response();
+                    let _ = response.write_async(&mut lock.stream).await;
+                    return;
                 }
+
+                lock.curr_game = Some(*id);
+
+                game.spectators.push(spectator.clone());
+
+                break;
             }
         }
+    }
 
+    async fn check_streams(&mut self) {
         for i in (0..self.spectators.len()).rev() {
             if self.spectators[i].lock().await.error {
                 self.spectators.swap_remove(i);
@@ -194,24 +200,17 @@ impl SharedInner {
 
         for spectator in &self.spectators {
             let mut lock = spectator.lock().await;
-            if let Some(req) = lock.game_request {
-                if req.matches(&self.games.get(&id).unwrap()) {
+
+                if lock.game_request.matches(&self.games.get(&id).unwrap()) && lock.curr_game.is_none() {
                     if let Err(e) = lock.connect_to_game(self.games.get(&id).unwrap()).await {
                         error!("WS Error {:?}", e);
                         lock.error = true;
                     }
 
-                    if let Some(game) = lock.curr_game.replace(id) {
-                        if let Some(record) = self.games.get_mut(&game) {
-                            record.spectators.retain(move |x| !Arc::ptr_eq(x, spectator));
-                        }
-                    }
-
-                    lock.game_request = None;
+                    lock.curr_game = Some(id);
 
                     self.games.get_mut(&id).unwrap().spectators.push(spectator.clone());
                 }
-            }
         }
     }
 
@@ -253,7 +252,7 @@ impl SharedInner {
 }
 
 pub struct GameReporter {
-    inner: Arc<Mutex<SharedInner>>,
+    pub inner: Arc<Mutex<SharedInner>>,
 }
 
 unsafe impl Send for GameReporter {}
@@ -311,32 +310,10 @@ impl GameReporter {
     }
 
     pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let addr = SocketAddr::from(([0, 0, 0, 0], 42070));
-
-        info!("Binding websocket server to {:?}", addr);
-        let tcp_listener = TcpListener::bind(addr).await.unwrap();
-
         let shared_inner = self.inner.clone();
-        async_std::task::spawn(async move {
-            loop {
-                {shared_inner.lock().await.check_ws().await;}
-                async_std::task::sleep(Duration::from_millis(25)).await;
-            }
-        });
-
         loop {
-            let (stream, addr) = tcp_listener.accept().await?;
-
-            info!("New websocket connection from {:?}", addr);
-            let ws = match accept_async(stream).await {
-                Ok(x) => x,
-                Err(e) => {
-                    error!("Websocket handshake failed! {:?}", e);
-                    continue;
-                }
-            };
-
-            self.inner.lock().await.handle_ws(ws).await;
+            {shared_inner.lock().await.check_streams().await;}
+            async_std::task::sleep(Duration::from_millis(25)).await;
         }
     }
 }

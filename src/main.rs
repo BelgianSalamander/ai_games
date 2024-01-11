@@ -130,6 +130,7 @@ fn main() {
         let runner = Arc::new(GameRunner::new(game, "tic_tac_toe", 10, db).await);
 
         let mut reporter = GameReporter::new(&runner).await;
+        let reporter_inner = reporter.inner.clone();
 
         std::thread::spawn(move || {
             async_std::task::block_on(async {
@@ -139,9 +140,10 @@ fn main() {
 
         //Launch api on new thread
         let runner_copy = runner.clone();
+        
         std::thread::spawn(move || {
             async_std::task::block_on(async {
-                api::launch_and_run_api(runner_copy, db_copy).await.unwrap();
+                api::launch_and_run_api(runner_copy, reporter_inner, db_copy).await.unwrap();
             });
         });
 

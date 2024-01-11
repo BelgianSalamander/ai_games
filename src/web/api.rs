@@ -1,6 +1,6 @@
 use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
-use async_std::{net::{TcpListener, TcpStream},path::Path,};
+use async_std::{net::{TcpListener, TcpStream},path::Path, sync::Mutex,};
 use futures::AsyncReadExt;
 use log::{info, error, warn, debug};
 use rand::Rng;
@@ -12,7 +12,7 @@ use crate::{
     web::{http::{Method, Request, Response, Status}, web_errors::WebError}, langs::{language::{Language, PreparedProgram}, get_all_languages}, entities::{self, user, agent}, util::{temp_file::random_file, RUN_DIR}, players::auto_exec::GameRunner, cleanup_files,
 };
 
-use super::{profile::{generate_password, get_num_agents}, web_errors::{HttpResult, decode_utf8, ValueCast, parse_json_as_object, HttpErrorMap}};
+use super::{profile::{generate_password, get_num_agents}, web_errors::{HttpResult, decode_utf8, ValueCast, parse_json_as_object, HttpErrorMap}, game_reporter::SharedInner};
 
 trait IgnoreResult {
     fn ignore(self);
@@ -95,6 +95,7 @@ pub struct AppState {
     executor: Arc<GameRunner<Box<dyn Game>>>,
     super_secret_admin_password: String,
     languages: Arc<Vec<Arc<dyn Language>>>,
+    reporter: Arc<Mutex<SharedInner>>,
     db: DatabaseConnection,
 
     page_engine: PageEngine,
@@ -959,19 +960,25 @@ async fn handle_conn(mut stream: TcpStream, addr: SocketAddr, state: AppState) {
 
     info!("Received request [{} {} {}]", addr, request.method, request.path);
 
-    let result = match request.method {
-        Method::Get => route_get(addr, request, state).await,
-        Method::Post => route_post(addr, request, state).await,
+    if request.method == Method::Get && request.matches_path_exact(&["bruh"]) {
+        let mut inner = state.reporter.lock().await;
 
-        _ => Err(WebError::InvalidMethod)
-    };
+        inner.handle_stream(stream, &request).await;
+    } else {
+        let result = match request.method {
+            Method::Get => route_get(addr, request, state).await,
+            Method::Post => route_post(addr, request, state).await,
 
-    match result {
-        Ok(res) => res.write_async(&mut stream).await.ignore(),
-        Err(res) => {
-            let response = res.into_response();
-            info!("Request [{}] was unsuccesful ({})", addr, response.status);
-            response.write_async(&mut stream).await.ignore();
+            _ => Err(WebError::InvalidMethod)
+        };
+
+        match result {
+            Ok(res) => res.write_async(&mut stream).await.ignore(),
+            Err(res) => {
+                let response = res.into_response();
+                info!("Request [{}] was unsuccesful ({})", addr, response.status);
+                response.write_async(&mut stream).await.ignore();
+            }
         }
     }
 }
@@ -993,7 +1000,7 @@ fn generate_admin_password() -> String {
         .collect()
 }
 
-pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, db: DatabaseConnection) -> std::io::Result<()> {
+pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, reporter: Arc<Mutex<SharedInner>>, db: DatabaseConnection) -> std::io::Result<()> {
     let addr = SocketAddr::from(([0, 0, 0, 0], 42069));
 
     let listener = TcpListener::bind(addr).await?;
@@ -1002,6 +1009,7 @@ pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, db: Da
         executor,
         super_secret_admin_password: generate_admin_password(),
         languages: Arc::new(get_all_languages()),
+        reporter,
         db,
         page_engine: PageEngine::load()
     };

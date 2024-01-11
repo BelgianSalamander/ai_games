@@ -1,6 +1,6 @@
 let agents;
-let ws;
 let gameEngine;
+let activeSource;
 
 COLOUR_CACHE = {};
 NAME_CACHE = {};
@@ -222,32 +222,8 @@ function onLoad() {
         }
     });
 
-    ws = new WebSocket("ws://172.31.180.162:42070/");
-    ws.onmessage = (m) => {
-        json = JSON.parse(m.data);
-        const e = document.getElementById("game-display");
-
-        if (json.kind == "connect") {
-            e.innerHTML = "";
-            gameEngine = GAME_MAP[json.data.kind]
-            gameEngine.startGame(e, json.data.players);
-            lastUpdate = new Date();
-
-            eventQueue.length = 0;
-
-            for (p of json.data.history) {
-                eventQueue.push({
-                    "kind": "update",
-                    "data": JSON.parse(p)
-                });
-            }
-
-            processQueue();
-        } else {
-            eventQueue.push(json);
-            processQueue();
-        }
-    }
+    /*ws = new WebSocket("ws://172.31.180.162:42070/");
+    ws.onmessage = */
 }
 
 function updateAgentSuggestions(e) {
@@ -303,9 +279,51 @@ function connect() {
         }
     }
 
+    let req;
+
     if (agentId == -1) {
-        ws.send("\"Any\"");
+        req = "\"Any\"";
     } else {
-        ws.send(JSON.stringify({ "WithPlayer": agentId }));
+        req = JSON.stringify({ "WithPlayer": agentId });
     }
+
+    let url = `/bruh?req=${encodeURIComponent(req)}`;
+
+    if (activeSource) {
+        activeSource.close();
+    }
+
+    activeSource = new EventSource(url);
+    activeSource.onmessage = (m) => {
+        json = JSON.parse(m.data);
+        console.log(json);
+        const e = document.getElementById("game-display");
+
+        if (json.kind == "connect") {
+            e.innerHTML = "";
+            gameEngine = GAME_MAP[json.data.kind]
+            gameEngine.startGame(e, json.data.players);
+            lastUpdate = new Date();
+
+            eventQueue.length = 0;
+
+            for (p of json.data.history) {
+                eventQueue.push({
+                    "kind": "update",
+                    "data": JSON.parse(p)
+                });
+            }
+
+            processQueue();
+        } else {
+            eventQueue.push(json);
+
+            if (json.kind == "end") {
+                activeSource.close();
+                activeSource = undefined;
+            }
+
+            processQueue();
+        }
+    };
 }

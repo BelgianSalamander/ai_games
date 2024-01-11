@@ -212,7 +212,7 @@ impl fmt::Display for Status {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Method {
     Get,
     Post,
@@ -725,7 +725,7 @@ impl Response {
         let mut stream = AsyncWriterWrapper::new(stream);
 
         stream
-            .write(
+            .write_all(
                 format!(
                     "HTTP/1.1 {} {}\r\n",
                     self.status.get_code(),
@@ -737,13 +737,13 @@ impl Response {
 
         for (key, value) in self.headers.iter() {
             stream
-                .write(format!("{}: {}\r\n", key, value).as_bytes())
+                .write_all(format!("{}: {}\r\n", key, value).as_bytes())
                 .await?;
         }
 
-        stream.write(b"\r\n").await?;
+        stream.write_all(b"\r\n").await?;
 
-        stream.write(&self.body).await?;
+        stream.write_all(&self.body).await?;
 
         Ok(())
     }
