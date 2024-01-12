@@ -1001,7 +1001,7 @@ fn generate_admin_password() -> String {
 }
 
 pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, reporter: Arc<Mutex<SharedInner>>, db: DatabaseConnection) -> std::io::Result<()> {
-    let addr = SocketAddr::from(([0, 0, 0, 0], 42069));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
 
     let listener = TcpListener::bind(addr).await?;
 

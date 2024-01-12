@@ -152,16 +152,163 @@ class TicTacToe {
         }
     }
 
+    shouldWaitForUpdate(data) {
+        return true;
+    }
+
+    endGame(element) {
+
+    }
+}
+
+const SNAKE_EMPTY = "#4d4d4d";
+const SNAKE_FOOD = "#f5f11b";
+
+class NZOISnake {
+    makePlayerElement(id, extra) {
+        const link = document.createElement("a");
+        link.classList.add("playing-agent-name");
+        link.href = `/pages/agent.html?agent=${id}`;
+        link.style.color = getColour(id);
+
+        if (!(id in NAME_CACHE)) {
+            fetch(`/api/agent?agent=${id}`).then(res => res.json()).then(data => {
+                link.innerText = data.name + extra;
+                NAME_CACHE[id] = data.name;
+                COLOUR_CACHE[id] = data.colour;
+            });
+        } else {
+            link.innerText = NAME_CACHE[id] + extra;
+        }
+
+        return link;
+    }
+
+    startGame(element, players) {
+        const globalContainer = document.createElement("div");
+        globalContainer.style.display = "grid";
+        globalContainer.style.gridTemplateColumns = "350px 1fr";
+
+        const playerList = document.createElement("div");
+        playerList.id = "snake-player-list";
+        playerList.style.width = "350px";
+        playerList.style.justifyContent = "space-evenly";
+        playerList.style.alignItems = "center";
+
+        this.colours = [];
+        this.scoreElements = [];
+
+        for (const player of players) {
+            let colour = getColour(player);
+            this.colours.push(colour);
+
+            const link = document.createElement("a");
+            link.classList.add("playing-agent-name");
+
+            link.href = `/pages/agent.html?agent=${player}`;
+            link.style.color = colour;
+
+            if (!(player in NAME_CACHE)) {
+                fetch(`/api/agent?agent=${player}`).then(res => res.json()).then(data => {
+                    link.innerText = data.name;
+                    NAME_CACHE[player] = data.name;
+                    COLOUR_CACHE[player] = data.colour;
+                });
+            } else {
+                link.innerText = NAME_CACHE[player];
+            }
+
+            playerList.appendChild(link);
+
+            let scoreElement = document.createElement("span");
+            scoreElement.classList.add("snake-score");
+            scoreElement.innerText = "0";
+
+            this.scoreElements.push(scoreElement);
+            playerList.appendChild(scoreElement);
+        }
+
+        globalContainer.appendChild(playerList);
+
+        const gridContainer = document.createElement("div");
+        gridContainer.style.display = "grid";
+        gridContainer.id = "grid-container";
+
+        gridContainer.style.margin = "auto";
+        gridContainer.style.justifyContent = "center";
+
+        globalContainer.appendChild(gridContainer);
+
+        element.appendChild(globalContainer);
+    }
+
+    updateGame(element, data) {
+        if (data.kind == "dimensions") {
+            this.rows = data.data[0];
+            this.cols = data.data[1];
+
+            console.log(`Grid is ${this.rows} by ${this.cols}`);
+
+            let gridContainer = document.getElementById("grid-container");
+
+            gridContainer.style.gridTemplateColumns = "1fr ".repeat(this.cols);
+            gridContainer.style.gridTemplateRows = "1fr ".repeat(this.rows);
+
+            let size = 500 / Math.max(this.rows, this.cols);
+            size = `${size}px`;
+
+            for (let r = 0; r < this.rows; r++) {
+                for (let c = 0; c < this.cols; c++) {
+                    const cell = document.createElement("div");
+                    cell.id = "snake-cell-" + r + "-" + c;
+                    cell.classList.add("snake-cell");
+
+                    cell.style.width = size;
+                    cell.style.height = size;
+
+                    cell.style.backgroundColor = SNAKE_EMPTY;
+
+                    gridContainer.appendChild(cell);
+                }
+            }
+        } else if (data.kind == "grid") {
+            console.log("Updating grid");
+            for (let r = 0; r < this.rows; r++) {
+                for (let c = 0; c < this.cols; c++) {
+                    const cell = document.getElementById("snake-cell-" + r + "-" + c);
+
+                    let val = data.data[r][c];
+
+                    if (val == -1) cell.style.backgroundColor = SNAKE_FOOD;
+                    else if (val == 0) cell.style.backgroundColor = SNAKE_EMPTY;
+                    else {
+                        let player_index = val - 1;
+                        cell.style.backgroundColor = this.colours[player_index];
+                    }
+                }
+            }
+        } else if (data.kind == "scores") {
+            for (let i = 0; i < this.scoreElements.length; i++) {
+                this.scoreElements[i].innerText = `${data.data[i]}`;
+            }
+        }
+    }
+
+    shouldWaitForUpdate(data) {
+        return data.kind == "grid";
+    }
+
     endGame(element) {
 
     }
 }
 
 const GAME_MAP = {
-    "Tic Tac Toe": new TicTacToe()
+    "Tic Tac Toe": new TicTacToe(),
+    "Snake": new NZOISnake()
 };
 
-const MIN_DELAY = 250;
+const MIN_DELAY = 100;
 const eventQueue = [];
 let lastUpdate = new Date();
 let queueCallback = -1;
@@ -172,30 +319,34 @@ function processQueue() {
     }
     queueCallback = -1;
 
+    if (!eventQueue.length) return;
+
     let currentTime = new Date();
 
-    if (currentTime - lastUpdate >= MIN_DELAY) {
-        if (eventQueue.length) {
-            const e = document.getElementById("game-display");
+    let mustWait = true;
+    if (eventQueue[0].kind == "update") {
+        mustWait = gameEngine.shouldWaitForUpdate(eventQueue[0].data);
+    }
+    if (!mustWait || currentTime - lastUpdate >= MIN_DELAY) {
+        const e = document.getElementById("game-display");
 
-            let packet = eventQueue[0];
-            eventQueue.splice(0, 1);
+        let packet = eventQueue[0];
+        eventQueue.splice(0, 1);
 
-            console.log("Processing packet", packet);
-            if (packet.kind == "update") {
-                gameEngine.updateGame(e, packet.data);
-            } else if (packet.kind == "end") {
-                gameEngine.endGame(e, packet.data);
+        console.log("Processing packet", packet);
+        if (packet.kind == "update") {
+            gameEngine.updateGame(e, packet.data);
+        } else if (packet.kind == "end") {
+            gameEngine.endGame(e, packet.data);
 
-                setTimeout(connect, 2000);
-            } else {
-                console.log("Invalid packet kind!", packet);
-            }
+            setTimeout(connect, 3000);
+        } else {
+            console.log("Invalid packet kind!", packet);
         }
 
         lastUpdate = currentTime;
 
-        queueCallback = setTimeout(processQueue, MIN_DELAY);
+        queueCallback = setTimeout(processQueue, 0);
     } else {
         let needed = Math.max(0, MIN_DELAY - (currentTime - lastUpdate));
 

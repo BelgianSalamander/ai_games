@@ -195,26 +195,37 @@ impl<T: Game + 'static> GameRunner<T> {
 
             async_std::task::spawn(async move {
                 info!("Starting a game!");
-                let results = game_copy.run(&mut agents, Some(Duration::from_millis(500)), reporter).await;
+                let results = game_copy.run(&mut agents, Some(Duration::from_millis(40)), reporter).await;
 
                 let mut players: Vec<entities::agent::ActiveModel> = players.into_iter().map(|p| p.into()).collect();
 
                 for i in 0..agents.len() {
-                    if let Some(err) = agents[i].get_error() {
-                        const MAX_READ: usize = 10 * 1024 * 1024;
+                    const MAX_READ: usize = 10 * 1024;
+                    let stderr_contents = agents[i].read_stderr(Some(MAX_READ)).await;
 
-                        let stderr_contents = agents[i].read_stderr(Some(MAX_READ)).await;
+                    let stderr_store = match &players[i].error_file {
+                        ActiveValue::NotSet | ActiveValue::Unchanged(None) | ActiveValue::Set(None) => {
+                            let res = random_file(RUN_DIR, ".error");
+                            players[i].error_file = ActiveValue::Set(Some(res.clone()));
+                            res
+                        },
+                        ActiveValue::Unchanged(Some(x)) | ActiveValue::Set(Some(x)) => x.to_string()
+                    };
+
+                    if let Some(err) = agents[i].get_error() {
                         let displayed_error = format!("Error: {}\nStderr:\n{}", err, stderr_contents);
 
-                        let stderr_store = random_file(RUN_DIR, ".error");
                         if let Err(e) = async_std::fs::write(stderr_store.clone(), displayed_error.clone()).await {
                             error!("Encountered error while saving error! {}", e);
                         }
 
-                        players[i].error_file = ActiveValue::Set(Some(stderr_store.clone()));
                         players[i].removed = ActiveValue::Set(true);
 
                         warn!("Player {} removed.\n{}", players[i].name.get().unwrap(), displayed_error);
+                    } else {
+                        if let Err(e) = async_std::fs::write(stderr_store, stderr_contents).await {
+                            error!("Encountered error while saving stderr! {}", e);
+                        }
                     }
                 }
 
@@ -222,7 +233,7 @@ impl<T: Game + 'static> GameRunner<T> {
 
                 for mut player in players {
                     player.in_game = ActiveValue::Set(false);
-                    player.update(&db_copy).await.unwrap();
+                    let _ = player.update(&db_copy).await;
                 }
             });
         }

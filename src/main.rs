@@ -111,7 +111,7 @@ fn main() {
         std::fs::create_dir(RUN_DIR).unwrap();
     }
 
-    let mut file = std::fs::File::open("res/configs/snake_small.json").unwrap();
+    let mut file = std::fs::File::open("res/configs/fours.json").unwrap();
     let game: Box<dyn Game> = Box::new(serde_json::from_reader::<std::fs::File, NzoiSnake>(file).unwrap());
 
     async_std::task::block_on(async {

@@ -654,11 +654,11 @@ int main(){
                 let decl = type_as_inline_cpp(ty);
                 interactor.push_str(&format!("            {decl} param_{name};\n"));
                 let mut x = 0;
-                interactor.push_str(&format!("std::cerr << \"  Reading in {}\" << std::endl;\n", name));
+                //interactor.push_str(&format!("std::cerr << \"  Reading in {}\" << std::endl;\n", name));
                 write_decoder(ty, 3, format!("param_{name}"), &mut interactor, &mut x);
             }
 
-            interactor.push_str(&format!("std::cerr << \"  Calling!\" << std::endl;\n"));
+            //interactor.push_str(&format!("std::cerr << \"  Calling!\" << std::endl;\n"));
 
             if signature.args.len() > 0 {
                 interactor.push_str("            \n");
@@ -768,7 +768,7 @@ int main(){
         let mut compile_job: crate::isolate::sandbox::RunningJob = sandbox.launch(
             "/usr/bin/g++".to_string(),
             vec![
-                "-DVERBOSE_IO".to_string(),
+                /*"-DVERBOSE_IO".to_string(),*/
                 "-I/client_files/".to_string(),
                 "-O2".to_string(),
                 "-Wall".to_string(),

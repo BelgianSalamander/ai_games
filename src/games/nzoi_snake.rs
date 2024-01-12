@@ -73,7 +73,9 @@ impl Game for NzoiSnake {
         let mut scores = vec![0.0; self.num_players()];
 
         let size_data = (self.rows(), self.cols());
-        reporter.update(&size_data, "dimensions");
+        reporter.update(&size_data, "dimensions").await;
+
+        let mut turns_without_changes = 0;
 
         for (i, snake) in self.snakes.iter().enumerate() {
             for (row, col) in snake {
@@ -100,6 +102,7 @@ impl Game for NzoiSnake {
                 for j in 0..self.cols() {
                     if grid[i][j] == -1 {
                         num_food_on_board += 1;
+                        turns_without_changes = 0;
                     }
                 }
             }
@@ -122,8 +125,6 @@ impl Game for NzoiSnake {
                 }
             }
 
-            info!("Getting Moves!");
-
             let futures = agents.iter_mut().enumerate().filter_map(|(i, agent)| 
                 if dead[i] {
                     None
@@ -135,8 +136,6 @@ impl Game for NzoiSnake {
             let moves = futures::future::join_all(futures).await;
 
             waiter.wait().await;
-
-            info!("Got moves!");
 
             let alive_players: Vec<_> = (0..self.num_players()).filter(|x| !dead[*x]).collect();
             let mut new_positions = vec![];
@@ -204,6 +203,7 @@ impl Game for NzoiSnake {
 
                 if grid[pos.row as usize][pos.col as usize] > 0 {
                     reporter.update(&(i+1), "snake_crash").await;
+                    scores[(grid[pos.row as usize][pos.col as usize] - 1) as usize] += 1.0;
                     dead[snake] = true;
                     num_dead += 1;
                     to_kill.push(snake);
@@ -214,14 +214,34 @@ impl Game for NzoiSnake {
             }
 
             for snake in to_kill {
+                turns_without_changes = 0;
+                let mut rng = rand::thread_rng();
                 while !snakes[snake].is_empty() {
                     let p = snakes[snake].pop_front().unwrap();
-                    grid[p.row as usize][p.col as usize] = 0;
+
+                    if rng.gen_range(0.0..1.0) < 0.3 {
+                        grid[p.row as usize][p.col as usize] = -1;
+                    } else {
+                        grid[p.row as usize][p.col as usize] = 0;
+                    }
+                    
+                }
+
+                for i in 0..self.num_players() {
+                    if !dead[i] {
+                        scores[i] += 5.0;
+                    }
                 }
             }
 
             reporter.update(&grid, "grid").await;
             reporter.update(&scores, "scores").await;
+
+            turns_without_changes += 1;
+
+            if turns_without_changes > 50 {
+                break;
+            }
         }
 
         println!("Killing snakes!");
@@ -230,8 +250,7 @@ impl Game for NzoiSnake {
             agent.kill().await;
         }
 
-        //scores
-        vec![0.0, 0.0]
+        scores
     }
 }
 
