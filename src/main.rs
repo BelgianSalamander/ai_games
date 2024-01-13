@@ -1,8 +1,8 @@
 use async_std::fs::File;
 use gamedef::{game_interface::GameInterface, parser::parse_game_interface};
-use log::{info, debug};
+use log::{info, debug, error};
 use proc_gamedef::make_server;
-use sea_orm::{Database, EntityTrait, QueryFilter, ColumnTrait, DatabaseConnection};
+use sea_orm::{Database, EntityTrait, QueryFilter, ColumnTrait, DatabaseConnection, ActiveValue};
 use util::DATABASE_URL;
 use std::{path::{Path, PathBuf}, process::exit, sync::Arc, env, collections::HashSet};
 
@@ -17,6 +17,32 @@ pub mod web;
 pub mod entities;
 
 make_server!("../res/games/test_game.game");
+
+const USERS: [&str; 23] = [
+    "yixiu",
+    "siliconjz",
+    "ezhqx",
+    "Bobobobby",
+    "Zinc",
+    "Cyanberry",
+    "ar88lo",
+    "Vedang2006",
+    "Figgles",
+    "hause",
+    "leastinfinformednerd",
+    "SyntaxError",
+    "NebulaDev",
+    "olivermarsh",
+    "HappyPanda",
+    "EnaYin",
+    "kiwirafe",
+    "HappyCapybara",
+    "B_Star",
+    "thunderball",
+    "ac122351",
+    "Eason",
+    "bertil"
+];
 
 fn ensure_root() {
     match env::var("USER") {
@@ -123,7 +149,34 @@ fn main() {
 
         cleanup_files(&db).await;
 
-        let runner = Arc::new(GameRunner::new(game, "nzoi_snake", 10, db).await);
+        for name in USERS {
+            let username = name;
+            info!("Adding default user '{}'", username);
+
+            let other = entities::prelude::User::find()
+                .filter(entities::user::Column::Username.eq(username))
+                .one(&db)
+                .await.unwrap();
+
+            //Check if username is already taken
+            if other.is_some() {
+                error!("User already existed!");
+                continue;
+            }
+
+            let num_agents_allowed = 2;
+
+            let profile = entities::user::ActiveModel {
+                username: ActiveValue::Set(username.to_string()),
+                password: ActiveValue::Set(name.to_string()),
+                num_agents_allowed: ActiveValue::Set(num_agents_allowed),
+                ..Default::default()
+            };
+
+            entities::user::Entity::insert(profile).exec(&db).await.unwrap();
+        }
+
+        let runner = Arc::new(GameRunner::new(game, "nzoi_snake", 20, db).await);
 
         let mut reporter = GameReporter::new(&runner).await;
         let reporter_inner = reporter.inner.clone();

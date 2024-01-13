@@ -56,6 +56,9 @@ function withProfile(f) {
 }
 
 function makeLoggedIn(menu, id) {
+    document.getElementById("profile-icon").style.display = "block";
+    document.getElementById("profile-link").style.display = "block";
+    document.getElementById("profile-link").href = `/pages/profile.html?id=${id}`;
     fetch(`/api/profile?id=${id}`).then(res => res.json()).then(data => {
         profileObject = data;
 

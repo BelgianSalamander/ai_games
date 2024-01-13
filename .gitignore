@@ -8,3 +8,4 @@
 **/.vscode
 *.db
 *.debug.rs
+admin_password.txt

@@ -203,7 +203,7 @@ Connection: keep-alive */
 
                 if lock.game_request.matches(&self.games.get(&id).unwrap()) && lock.curr_game.is_none() {
                     if let Err(e) = lock.connect_to_game(self.games.get(&id).unwrap()).await {
-                        error!("WS Error {:?}", e);
+                        //error!("WS Error {:?}", e);
                         lock.error = true;
                     }
 
@@ -224,7 +224,7 @@ Connection: keep-alive */
                 let mut lock = spectator.lock().await;
 
                 if let Err(e) = lock.end_game().await {
-                    error!("WS Error: {:?}", e);
+                    //error!("WS Error: {:?}", e);
                     lock.error = true;
                 }
 
@@ -243,7 +243,7 @@ Connection: keep-alive */
                 let mut lock = spectator.lock().await;
 
                 if let Err(e) = lock.update_game(data).await {
-                    error!("WS Error: {:?}", e);
+                    //error!("WS Error: {:?}", e);
                     lock.error = true;
                 }
             }

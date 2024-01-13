@@ -76,6 +76,7 @@ impl Game for NzoiSnake {
         reporter.update(&size_data, "dimensions").await;
 
         let mut turns_without_changes = 0;
+        let mut turns_since_dead = 0;
 
         for (i, snake) in self.snakes.iter().enumerate() {
             for (row, col) in snake {
@@ -95,14 +96,20 @@ impl Game for NzoiSnake {
             }
         }
 
-        while num_dead < self.num_players() - 1 {
+        while num_dead < self.num_players() {
+            if num_dead >= self.num_players() - 1 {
+                turns_since_dead += 1;
+                if turns_since_dead > 10 {
+                    break;
+                }
+            }
+
             let mut num_food_on_board = 0;
 
             for i in 0..self.rows() {
                 for j in 0..self.cols() {
                     if grid[i][j] == -1 {
                         num_food_on_board += 1;
-                        turns_without_changes = 0;
                     }
                 }
             }
@@ -121,6 +128,7 @@ impl Game for NzoiSnake {
                     if grid[row][col] == 0{
                         num_food_on_board += 1;
                         grid[row][col] = -1;
+                        turns_without_changes = 0;
                     }
                 }
             }

@@ -522,7 +522,7 @@ async fn route_get(_addr: SocketAddr, req: Request, state: AppState) -> HttpResu
 
         if let Some(owner_id) = agent.owner_id {
             if let Some(owner) = user::Entity::find_by_id(owner_id).one(&state.db).await? {
-                if !is_user_authenticated(&req, &owner) {
+                if !is_user_authenticated(&req, &owner) && !authenticate_admin(&req, &state) {
                     send_error = false;
                     send_src = false;
                 }
@@ -802,6 +802,10 @@ async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpRes
         let language_id = data.try_get("lang")?.try_as_str()?;
         let name = data.try_get("name")?.try_as_str()?;
 
+        if src.len() > 30000 {
+            return Err(WebError::InvalidData(format!("Source code too long!")));
+        }
+
         let language = state.languages.iter().filter(|l| l.id() == language_id).next();
         let language = match language {
             Some(l) => l,
@@ -1001,7 +1005,7 @@ fn generate_admin_password() -> String {
 }
 
 pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, reporter: Arc<Mutex<SharedInner>>, db: DatabaseConnection) -> std::io::Result<()> {
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
 
     let listener = TcpListener::bind(addr).await?;
 
@@ -1015,6 +1019,7 @@ pub async fn launch_and_run_api(executor: Arc<GameRunner<Box<dyn Game>>>, report
     };
 
     println!("Admin password: {}", state.super_secret_admin_password);
+    std::fs::write("./admin_password.txt", state.super_secret_admin_password.as_bytes()).unwrap();
 
     println!("Listening on {}", addr);
 
