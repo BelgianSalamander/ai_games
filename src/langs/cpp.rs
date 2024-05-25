@@ -1,3 +1,4 @@
+use async_std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use deadpool::unmanaged::Pool;
 use gamedef::game_interface::{
@@ -763,7 +764,7 @@ int main(){
             .await
             .unwrap();
 
-        make_public(&out.dir_as_string()).await;
+        //make_public(&out.dir_as_string()).await;
 
         let mut compile_job: crate::isolate::sandbox::RunningJob = sandbox.launch(
             "/usr/bin/g++".to_string(),
@@ -772,9 +773,9 @@ int main(){
                 "-I/client_files/".to_string(),
                 "-O2".to_string(),
                 "-Wall".to_string(),
-                "-std=c++20".to_string(),
+                "-std=c++17".to_string(),
                 "-o".to_string(),
-                "/out/agent.o".to_string(),
+                "/box/agent.o".to_string(),
                 "/client_files/interactor.cpp".to_string(),
                 "/src/agent.cpp".to_string(),
             ],
@@ -799,12 +800,20 @@ int main(){
 
         let status = compile_job.wait().await.unwrap();
 
-
         if !status.success() {
             return Err(compile_job.stderr.read_as_string().await);
         } else {
             println!("Compile result\n\n{}", compile_job.stderr.read_as_string().await);
         }
+
+        let mut output_file = PathBuf::from(sandbox.box_dir());
+        output_file.push("box");
+        output_file.push("agent.o");
+
+        let mut target_location = out.dir.clone();
+        target_location.push("agent.o");
+
+        std::fs::copy(&output_file, &target_location).map_err(|x| format!("Error {x} when copying '{:?}' to '{:?}'", output_file, target_location))?;
 
         Ok(())
     }

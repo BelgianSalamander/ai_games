@@ -755,6 +755,10 @@ impl IsolateSandbox {
 
         RunningJob::new(child, stderr_file, metafile_file, None)
     }
+
+    pub fn box_dir(&self) -> &str {
+        &self.box_path
+    }
 }
 
 impl Drop for IsolateSandbox {
