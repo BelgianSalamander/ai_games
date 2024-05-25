@@ -19,7 +19,7 @@ function setPassword() {
 }
 
 function onLoad() {
-    setInterval(updateProfileList, 1000);
+    setInterval(updateProfileList, 10000);
     updatePassword();
 }
 
