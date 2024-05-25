@@ -18,32 +18,6 @@ pub mod entities;
 
 make_server!("../res/games/test_game.game");
 
-const USERS: [&str; 23] = [
-    "yixiu",
-    "siliconjz",
-    "ezhqx",
-    "Bobobobby",
-    "Zinc",
-    "Cyanberry",
-    "ar88lo",
-    "Vedang2006",
-    "Figgles",
-    "hause",
-    "leastinfinformednerd",
-    "SyntaxError",
-    "NebulaDev",
-    "olivermarsh",
-    "HappyPanda",
-    "EnaYin",
-    "kiwirafe",
-    "HappyCapybara",
-    "B_Star",
-    "thunderball",
-    "ac122351",
-    "Eason",
-    "bertil"
-];
-
 fn ensure_root() {
     match env::var("USER") {
         Err(e) => {
@@ -137,7 +111,7 @@ fn main() {
         std::fs::create_dir(RUN_DIR).unwrap();
     }
 
-    let mut file = std::fs::File::open("res/configs/fours.json").unwrap();
+    let file = std::fs::File::open("res/configs/snake_small.json").unwrap();
     let game: Box<dyn Game> = Box::new(serde_json::from_reader::<std::fs::File, NzoiSnake>(file).unwrap());
 
     async_std::task::block_on(async {
@@ -148,33 +122,6 @@ fn main() {
             .exec(&db).await.unwrap();
 
         cleanup_files(&db).await;
-
-        for name in USERS {
-            let username = name;
-            info!("Adding default user '{}'", username);
-
-            let other = entities::prelude::User::find()
-                .filter(entities::user::Column::Username.eq(username))
-                .one(&db)
-                .await.unwrap();
-
-            //Check if username is already taken
-            if other.is_some() {
-                error!("User already existed!");
-                continue;
-            }
-
-            let num_agents_allowed = 2;
-
-            let profile = entities::user::ActiveModel {
-                username: ActiveValue::Set(username.to_string()),
-                password: ActiveValue::Set(name.to_string()),
-                num_agents_allowed: ActiveValue::Set(num_agents_allowed),
-                ..Default::default()
-            };
-
-            entities::user::Entity::insert(profile).exec(&db).await.unwrap();
-        }
 
         let runner = Arc::new(GameRunner::new(game, "nzoi_snake", 20, db).await);
 

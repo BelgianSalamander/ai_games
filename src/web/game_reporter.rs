@@ -2,8 +2,7 @@ use std::{collections::HashMap, net::SocketAddr, pin::Pin, sync::Arc, time::Dura
 
 use async_std::{sync::Mutex, net::{TcpListener, TcpStream}, io::WriteExt};
 use async_trait::async_trait;
-use futures::{StreamExt, SinkExt, FutureExt};
-use log::{error, info};
+use log::{error, info, warn};
 use serde_json::{Value, json};
 
 use crate::{
@@ -142,14 +141,10 @@ impl SharedInner {
         }));
 
         let mut lock = spectator.lock().await;
+        self.spectators.push(spectator.clone());
 
         let mut response = Response::new();
         response.set_status(Status::Ok);
-
-        /*
-        Content-Type: text/event-stream
-Cache-Control: no-cache
-Connection: keep-alive */
 
         response.set_header("Content-Type", "text/event-stream");
         response.set_header("Cache-Control", "no-cache");
@@ -201,16 +196,21 @@ Connection: keep-alive */
         for spectator in &self.spectators {
             let mut lock = spectator.lock().await;
 
-                if lock.game_request.matches(&self.games.get(&id).unwrap()) && lock.curr_game.is_none() {
-                    if let Err(e) = lock.connect_to_game(self.games.get(&id).unwrap()).await {
-                        //error!("WS Error {:?}", e);
-                        lock.error = true;
-                    }
+            if lock.error {
+                continue;
+            }
 
-                    lock.curr_game = Some(id);
-
-                    self.games.get_mut(&id).unwrap().spectators.push(spectator.clone());
+            if lock.game_request.matches(&self.games.get(&id).unwrap()) && lock.curr_game.is_none() {
+                println!("Connecting to game!");
+                if let Err(e) = lock.connect_to_game(self.games.get(&id).unwrap()).await {
+                    error!("WS Error {:?}", e);
+                    lock.error = true;
                 }
+
+                lock.curr_game = Some(id);
+
+                self.games.get_mut(&id).unwrap().spectators.push(spectator.clone());
+            }
         }
     }
 
@@ -223,12 +223,18 @@ Connection: keep-alive */
             for spectator in &record.spectators {
                 let mut lock = spectator.lock().await;
 
+                if lock.error {
+                    continue;
+                }
+
                 if let Err(e) = lock.end_game().await {
-                    //error!("WS Error: {:?}", e);
+                    error!("WS Error: {:?}", e);
                     lock.error = true;
                 }
 
                 lock.curr_game = None;
+                let _ = lock.stream.shutdown(std::net::Shutdown::Both);
+                lock.error = true;
             }
         }
 
@@ -242,8 +248,12 @@ Connection: keep-alive */
             for spectator in &record.spectators {
                 let mut lock = spectator.lock().await;
 
+                if lock.error {
+                    continue;
+                }
+
                 if let Err(e) = lock.update_game(data).await {
-                    //error!("WS Error: {:?}", e);
+                    error!("WS Error: {:?}", e);
                     lock.error = true;
                 }
             }
