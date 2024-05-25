@@ -174,13 +174,15 @@ impl<T: Game + 'static> GameRunner<T> {
             let mut agents = vec![];
             let mut ids = vec![];
 
-            for (sandbox, player) in sanboxes.into_iter().zip(players.iter()) {
+            for (mut sandbox, player) in sanboxes.into_iter().zip(players.iter()) {
+                sandbox.initialize().await;
                 let language = self.get_language(&player.language).unwrap();
 
                 //TODO: Free sandbox as soon as it can be freed?
                 let mut job = language.launch(&player.directory, sandbox.as_ref(), &self.itf);
 
                 job.add_post_exit(move |_| {
+                    async_std::task::block_on(sandbox.cleanup());
                     drop(sandbox);
                 });
 

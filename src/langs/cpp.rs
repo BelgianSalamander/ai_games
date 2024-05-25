@@ -757,7 +757,8 @@ int main(){
         game_interface: &gamedef::game_interface::GameInterface,
         sandboxes: Pool<IsolateSandbox>,
     ) -> Result<(), String> {
-        let sandbox = sandboxes.get().await.unwrap();
+        let mut sandbox = sandboxes.get().await.unwrap();
+        sandbox.initialize().await;
 
         let temp_folder = random_dir("./tmp");
         async_std::fs::write(format!("{}/{}", temp_folder, "agent.cpp"), src)
@@ -814,6 +815,8 @@ int main(){
         target_location.push("agent.o");
 
         std::fs::copy(&output_file, &target_location).map_err(|x| format!("Error {x} when copying '{:?}' to '{:?}'", output_file, target_location))?;
+
+        sandbox.cleanup().await;
 
         Ok(())
     }

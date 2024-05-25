@@ -19,21 +19,6 @@ pub mod entities;
 
 make_server!("../res/games/test_game.game");
 
-fn ensure_root() {
-    match env::var("USER") {
-        Err(e) => {
-            println!("Something went wrong: {:?}", e);
-            exit(2);
-        },
-        Ok(name) => {
-            if name != "root" {
-                println!("Must be started as root");
-                exit(1);
-            }
-        }
-    }
-}
-
 fn cleanup_from_path(path: &PathBuf, dont_delete: &HashSet<PathBuf>) -> bool {
     debug!("Exploring {:?} for cleanup!", path);
     if dont_delete.contains(path) {
@@ -94,8 +79,6 @@ pub async fn cleanup_files(db: &DatabaseConnection) {
 }
 
 fn main() {
-    ensure_root();
-
     env_logger::Builder::from_env(
         env_logger::Env::default()
             .default_filter_or("ai_games=debug")

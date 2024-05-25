@@ -648,7 +648,7 @@ impl IsolateSandbox {
         sandbox
     }
 
-    async fn initialize(&mut self) {
+    pub async fn initialize(&mut self) {
         info!("Initializing sandbox {}", self.box_id);
         let mut command = Command::new(ISOLATE_PATH);
 
@@ -667,7 +667,7 @@ impl IsolateSandbox {
         self.box_path = box_path;
     }
 
-    async fn cleanup(&self) {
+    pub async fn cleanup(&self) {
         info!("Cleaning up sandbox {}", self.box_id);
         let mut command = Command::new(ISOLATE_PATH);
 
@@ -675,7 +675,8 @@ impl IsolateSandbox {
         command.arg("--box-id");
         command.arg(self.box_id.to_string());
 
-        panic_on_fail(&mut command).await;
+        //panic_on_fail(&mut command).await;
+        command.output().await;
     }
 
     pub fn launch(
