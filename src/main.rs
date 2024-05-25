@@ -1,6 +1,7 @@
 use async_std::fs::File;
 use gamedef::{game_interface::GameInterface, parser::parse_game_interface};
 use log::{info, debug, error};
+use migration::MigratorTrait;
 use proc_gamedef::make_server;
 use sea_orm::{Database, EntityTrait, QueryFilter, ColumnTrait, DatabaseConnection, ActiveValue};
 use util::DATABASE_URL;
@@ -116,6 +117,9 @@ fn main() {
 
     async_std::task::block_on(async {
         let db = Database::connect(DATABASE_URL).await.unwrap();
+
+        migration::Migrator::up(&db, None).await.unwrap();
+        
         let db_copy = db.clone();
         entities::prelude::Agent::delete_many()
             .filter(agent::Column::Partial.eq(true).or(agent::Column::Removed.eq(true)))
