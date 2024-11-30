@@ -665,12 +665,16 @@ async fn reset_password(req: &Request, state: &AppState) -> HttpResult<Response>
     Ok(res)
 }
 
-async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpResult<Response>{
+async fn route_post(_addr: SocketAddr, req: Request, state: AppState) -> HttpResult<Response> {
     if req.matches_path(&["admin"]) {
         if !authenticate_admin(&req, &state) {
             Err(WebError::Unauthorized)
         } else if req.matches_path_exact(&["admin", "new_profile"]) {
-            let username = req.path.get("username")?;
+            let username = &req.path.get("username")?.replace("\n", "");
+
+            if username.len() > 50 {
+                return Err(WebError::InvalidData("username too long".to_string()));
+            }
 
             let other = entities::prelude::User::find()
                 .filter(user::Column::Username.eq(username))

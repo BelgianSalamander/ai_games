@@ -793,7 +793,7 @@ int main(){
             None,*/
             &LaunchOptions::new()
                 .memory_limit_kb(512000)
-                .time_limit_s(10.0)
+                .time_limit_s(30.0)
                 .max_processes(MaxProcessCount::Unlimited)
                 .map_dir("/client_files", self.get_dir(game_interface))
                 .add_mapping(DirMapping::named("/out", out.dir_as_string()).read_write())

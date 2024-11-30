@@ -1,5 +1,7 @@
 use std::{collections::HashMap, fmt, str::FromStr, string::FromUtf8Error};
 
+use url_encor::Encoder;
+
 use crate::util::asyncio::{AsyncReaderWrapper, AsyncWriterWrapper};
 
 use super::web_errors::WebError;
@@ -367,7 +369,7 @@ impl RequestPath {
                     }
                 };
 
-                query.insert(key.to_string(), value.to_string());
+                query.insert(key.to_string().url_decode(), value.to_string().url_decode());
             }
         }
 
