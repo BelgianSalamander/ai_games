@@ -1,7 +1,7 @@
 use std::{time::Duration, collections::VecDeque};
 
 use async_trait::async_trait;
-use log::{info, warn};
+use log::warn;
 use proc_gamedef::make_server;
 use rand::Rng;
 
@@ -27,7 +27,7 @@ impl NzoiSnake {
     }
 }
 
-make_server!("../../res/games/nzoi_snake.game");
+make_server!("res/games/nzoi_snake.game");
 
 fn apply_move(p: Pos, m: Move) -> Pos {
     let Pos {row, col} = p;

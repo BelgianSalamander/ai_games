@@ -10,7 +10,7 @@ use super::Game;
 #[derive(serde::Serialize)]
 pub struct TicTacToe;
 
-make_server!("../../res/games/tic_tac_toe.game");
+make_server!("res/games/tic_tac_toe.game");
 
 fn get_piece(cell: &BoardCell) -> Piece {
     match cell {

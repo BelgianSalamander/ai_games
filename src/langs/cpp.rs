@@ -1,4 +1,4 @@
-use async_std::path::{Path, PathBuf};
+use async_std::path::PathBuf;
 use async_trait::async_trait;
 use deadpool::unmanaged::Pool;
 use gamedef::game_interface::{
@@ -7,7 +7,7 @@ use gamedef::game_interface::{
 
 use crate::{
     isolate::sandbox::{
-        DirMapping, IsolateSandbox, LaunchOptions, MaxProcessCount, make_public,
+        DirMapping, IsolateSandbox, LaunchOptions, MaxProcessCount,
     },
     util::temp_file::random_dir,
 };
@@ -126,7 +126,7 @@ pub fn full_enum_decl(
     res.push_str("    } inner;");
 
     if let Some(name) = name {
-        for (idx, variant) in variants.iter().enumerate() {
+        for variant in variants.iter() {
             res.push_str(&format!("\n\n    {} {}(", name, variant.name));
 
             for (i, field) in variant.types.iter().enumerate() {
@@ -389,6 +389,8 @@ fn write_encoder(
         Type::DynamicArray(elem) => {
             let idx = format!("i_{discriminant}");
             *discriminant += 1;
+
+            write_encoder(&Type::Builtin(BuiltinType::U32), indent, format!("{val}.size()"), out, discriminant);
 
             out.push_str(&format!(
                 "{indent_str}for (int {idx} = 0; {idx} < {val}.size(); {idx}++) {{\n"
@@ -779,6 +781,7 @@ int main(){
                 "/box/agent.o".to_string(),
                 "/client_files/interactor.cpp".to_string(),
                 "/src/agent.cpp".to_string(),
+                "-fsanitize=undefined".to_string()
             ],
             /*vec![
                 (self.get_dir(&game_interface), "/client_files".to_string()),

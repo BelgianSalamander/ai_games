@@ -7,5 +7,6 @@
 **/target
 **/.vscode
 *.db
+*.db-journal
 *.debug.rs
 admin_password.txt

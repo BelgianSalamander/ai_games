@@ -13,7 +13,7 @@ fn make_deserializer(ty: &Type) -> String {
         Type::Builtin(BuiltinType::I64) => "(await data.read_i64())".to_string(),
         Type::Builtin(BuiltinType::F32) => "(await data.read_f32())".to_string(),
         Type::Builtin(BuiltinType::F64) => "(await data.read_f64())".to_string(),
-        Type::Builtin(BuiltinType::Str) => "await data.read_str()".to_string(),
+        Type::Builtin(BuiltinType::Str) => "(await data.read_str())".to_string(),
 
         Type::Array(ty, size) => {
             format!(

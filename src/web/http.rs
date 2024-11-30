@@ -249,6 +249,7 @@ impl fmt::Display for Method {
     }
 }
 
+#[derive(Debug)]
 pub enum HttpError {
     Http(Status, Option<String>),
     Io(std::io::Error),

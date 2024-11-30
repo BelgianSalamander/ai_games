@@ -1,14 +1,13 @@
-use std::{collections::HashMap, net::SocketAddr, pin::Pin, sync::Arc, time::Duration, ops::Index};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use async_std::{sync::Mutex, net::{TcpListener, TcpStream}, io::WriteExt};
+use async_std::{sync::Mutex, net::TcpStream, io::WriteExt};
 use async_trait::async_trait;
-use log::{error, info, warn};
+use log::{error, info};
 use serde_json::{Value, json};
 
 use crate::{
     games::Game,
     players::{
-        self,
         auto_exec::GameRunner,
         reporting::{EndCallback, StartCallback, UpdateCallback},
     },
@@ -114,12 +113,16 @@ impl SharedInner {
             Ok(Ok(x)) => x,
             Ok(Err(e)) => {
                 let response = WebError::InvalidData(format!("Couldn't decode req {:?}", e)).into_response();
-                response.write_async(&mut stream).await;
+                if let Err(e2) = response.write_async(&mut stream).await {
+                    error!("{:?} occured while handling {:?}", e2, e)
+                }
                 return;
             }
             Err(e) => {
                 let response = e.into_response();
-                response.write_async(&mut stream).await;
+                if let Err(e2) = response.write_async(&mut stream).await {
+                    error!("{:?} occured while handling web error", e2)
+                }
                 return;
             }
         }.to_string();
@@ -128,7 +131,9 @@ impl SharedInner {
             Ok(x) => x,
             Err(e) => {
                 let response = WebError::InvalidData(format!("Invalid connction request! {:?}", e)).into_response();
-                response.write_async(&mut stream).await;
+                if let Err(e2) = response.write_async(&mut stream).await {
+                    error!("{:?} occured while handling {:?}", e2, e)
+                }
                 return;
             }
         };

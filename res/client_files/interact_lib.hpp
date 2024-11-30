@@ -7,6 +7,8 @@
 #include <stdint.h>
 #include <string>
 
+//#define VERBOSE_IO
+
 bool isBigEndian() {
     union {
         uint32_t i;
@@ -110,12 +112,23 @@ void readData(T& out) {
 }
 
 void readString(std::string& out) {
+#ifdef VERBOSE_IO
+    std::cerr << "Trying to read string!" << std::endl;
+#endif
     uint32_t size;
     readData(size);
+
+#ifdef VERBOSE_IO
+    std::cerr << "String size: " << size << std::endl;
+#endif
 
     out.resize(size);
 
     readBytes(size, &out[0]);
+
+#ifdef VERBOSE_IO
+    std::cerr << "Read string " << out << std::endl;
+#endif
 }
 
 template<typename T>

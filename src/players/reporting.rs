@@ -1,8 +1,8 @@
-use std::{future::Future, sync::{Arc, atomic::{AtomicUsize, Ordering}}, pin::Pin};
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 
 use async_std::sync::Mutex;
 use async_trait::async_trait;
-use log::{error, info};
+use log::error;
 use serde_json::{Value, json};
 
 use crate::games::Game;

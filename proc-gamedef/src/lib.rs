@@ -1,7 +1,7 @@
 #![feature(proc_macro_span, extend_one)]
 
 extern crate proc_macro;
-use std::path::Path;
+use std::{path::Path, process::Command};
 
 use gamedef::{parser::parse_game_interface, game_interface::{GameInterface, Type, BuiltinType, StructFields, StructField, get_enum_variant_type}};
 use proc_macro::{TokenStream, Span, TokenTree, Ident, Group, Punct, Literal};
@@ -113,6 +113,7 @@ fn make_struct_fields(fields: &StructFields, span: &Span) -> TokenTree {
 fn make_serializer(ty: &Type, val: &str, out: &str) -> String {
     match ty {
         Type::Builtin(BuiltinType::Str) => format!("{{let bytes = {val}.as_bytes();\n{out}.extend(&(bytes.len() as u32).to_le_bytes());\n{out}.extend(bytes);}}", val=val, out=out),
+        Type::Builtin(BuiltinType::Bool) => format!("{out}.extend(&[{val} as u8]);", val=val, out=out),
         Type::Builtin(_) => format!("{out}.extend({val}.to_le_bytes());", val=val, out=out),
         Type::NamedType(name) => format!("serialize_{name}(&{val}, {out});", val=val, out=out, name=name),
         Type::Array(ty, _) => {
@@ -208,6 +209,7 @@ fn are_struct_fields_copyable(fields: &StructFields, itf: &GameInterface) -> boo
 
 fn is_copyable(ty: &Type, itf: &GameInterface) -> bool {
     match ty {
+        Type::Builtin(BuiltinType::Str) => false,
         Type::Builtin(_) => true,
         Type::NamedType(name) => {
             let (_, ty) = itf.types.iter().filter(|x| x.0 == *name).next().unwrap();
@@ -557,10 +559,6 @@ pub fn make_server(tokens: TokenStream) -> TokenStream {
     let name = tokens.to_string().replace("\"", "");
     let path = Path::new(&name);
     let span = Span::call_site();
-    let call_file = span.source_file().path();
-    let dir = call_file.parent().unwrap();
-    let path= dir.join(path);
-
     let name = name.replace(" ", "_").replace("/", "_").replace(".", "_");
 
     let content = std::fs::read_to_string(&path).unwrap();
@@ -569,7 +567,19 @@ pub fn make_server(tokens: TokenStream) -> TokenStream {
     let res = make_interface(&game_interface, &span);
 
     let code = res.to_string();
-    std::fs::write(format!("{}.debug.rs", path.to_str().unwrap()), code).unwrap();
+    let debug_path = format!("{}.debug.rs", path.to_str().unwrap());
+    std::fs::write(&debug_path, code).unwrap();
+
+    let mut command = Command::new("rustfmt");
+    command.arg(debug_path);
+    command.arg("--edition");
+    command.arg("2021");
+
+    if let Ok(mut x) = command.spawn() {
+        if let Err(e) = x.wait() {
+            println!("Error while running rustfmt: {:?}", e);
+        }
+    }
 
     res
 }

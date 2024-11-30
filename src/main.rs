@@ -1,13 +1,12 @@
-use async_std::fs::File;
-use gamedef::{game_interface::GameInterface, parser::parse_game_interface};
-use log::{info, debug, error};
+use log::{info, debug};
 use migration::MigratorTrait;
+use players::auto_exec::GameRunner;
 use proc_gamedef::make_server;
-use sea_orm::{Database, EntityTrait, QueryFilter, ColumnTrait, DatabaseConnection, ActiveValue};
+use sea_orm::{Database, EntityTrait, QueryFilter, ColumnTrait, DatabaseConnection};
 use util::DATABASE_URL;
-use std::{path::{Path, PathBuf}, process::exit, sync::Arc, env, collections::HashSet};
+use std::{path::{Path, PathBuf}, sync::Arc, collections::HashSet};
 
-use crate::{games::{oxo::TicTacToe, Game, nzoi_snake::NzoiSnake}, util::RUN_DIR, web::{api, game_reporter::GameReporter}, entities::agent, players::{auto_exec::GameRunner}, langs::{cpp::CppLang, language::Language}};
+use crate::{games::{Game, nzoi_snake::NzoiSnake}, util::RUN_DIR, web::{api, game_reporter::GameReporter}, entities::agent};
 
 pub mod isolate;
 pub mod util;
@@ -17,7 +16,7 @@ pub mod players;
 pub mod web;
 pub mod entities;
 
-make_server!("../res/games/test_game.game");
+make_server!("res/games/test_game.game");
 
 fn cleanup_from_path(path: &PathBuf, dont_delete: &HashSet<PathBuf>) -> bool {
     debug!("Exploring {:?} for cleanup!", path);

@@ -44,7 +44,7 @@ def read_f64():
 def read_bool():
     return read_u8() != 0
 
-def read_string():
+def read_str():
     length = read_u32()
     return read(length).decode('utf-8')
 
@@ -81,7 +81,7 @@ def write_f64(val):
 def write_bool(val):
     WRITE_BUF.write(struct.pack('<B', 1 if val else 0))
     
-def write_string(val):
+def write_str(val):
     data = val.encode('utf-8')
     write_u32(len(data))
     WRITE_BUF.write(data)

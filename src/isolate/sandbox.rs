@@ -308,7 +308,7 @@ pub struct RunningJob {
     stdin: Arc<Mutex<ChildStdin>>,
     stdout: Arc<Mutex<ChildStdout>>,
 
-    _metafile: TempFile,
+    pub _metafile: TempFile,
     pub stderr: TempFile,
 
     killed: bool,
@@ -344,6 +344,10 @@ impl<'data> Future for WriteFuture<'data> {
             pinned.poll_write(cx, &self.data[self.pos..])
         };
 
+        /*if self.data.len() >= 65536 {
+            info!("Write res: {:?}", res);
+        }*/
+
         match res {
             std::task::Poll::Ready(Ok(0)) => {
                 std::task::Poll::Ready(Err(Error::new(ErrorKind::WriteZero, "Failed to write data")))
@@ -353,6 +357,7 @@ impl<'data> Future for WriteFuture<'data> {
                 if self.pos == self.data.len() {
                     std::task::Poll::Ready(Ok(()))
                 } else {
+                    cx.waker().wake_by_ref(); // We can re-poll immediately
                     std::task::Poll::Pending
                 }
             },
@@ -392,12 +397,18 @@ impl<'data> Future for ReadFuture<'data> {
     type Output = Result<(), Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        if self.remaining == 0 { // If future was constructed to read 0 bytes
+            return std::task::Poll::Ready(Ok(()));
+        }
+
         let res = {
             let ReadFuture {ref stdout, ref mut data, ref pos, ref remaining} = &mut *self;
             let mut stdout = stdout.lock().unwrap();
             let pinned = Pin::new(&mut *stdout);
             pinned.poll_read(cx, &mut data[*pos..*pos + *remaining])
         };
+
+        //info!("Polled future. Result = {:?}", res);
 
         match res {
             std::task::Poll::Ready(Ok(0)) => std::task::Poll::Ready(Err(Error::new(ErrorKind::UnexpectedEof, "Unexpected EOF"))),
@@ -407,12 +418,39 @@ impl<'data> Future for ReadFuture<'data> {
                 if self.remaining == 0 {
                     std::task::Poll::Ready(Ok(()))
                 } else {
+                    cx.waker().wake_by_ref();
                     std::task::Poll::Pending
                 }
             },
             std::task::Poll::Ready(Err(e)) => std::task::Poll::Ready(Err(e)),
             std::task::Poll::Pending => std::task::Poll::Pending,
         }
+    }
+}
+
+pub struct FlushFuture {
+    stdin: Arc<Mutex<ChildStdin>>
+}
+
+impl FlushFuture {
+    pub fn new(stdin: Arc<Mutex<ChildStdin>>) -> FlushFuture {
+        Self {
+            stdin
+        }
+    }
+}
+
+impl Future for FlushFuture {
+    type Output = Result<(), Error>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        let res = {
+            let mut stdin = self.stdin.lock().unwrap();
+            let pinned = Pin::new(&mut *stdin);
+            pinned.poll_flush(cx)
+        };
+
+        return res;
     }
 }
 
@@ -491,6 +529,10 @@ impl RunningJob {
         ReadFuture::new(self.stdout.clone(), data).await
     }
 
+    pub async fn flush(&mut self) -> Result<(), Error> {
+        FlushFuture::new(self.stdin.clone()).await
+    }
+
     read_impl!(read_u8, u8, 1);
     read_impl!(read_u16, u16, 2);
     read_impl!(read_u32, u32, 4);
@@ -563,10 +605,11 @@ impl RunningJob {
             command.stderr(Stdio::null());
             command.stdin(Stdio::null());
 
-            command.spawn().unwrap();
+            let _ =command.spawn().unwrap().status().await;
         }
 
         self.child.kill()?;
+        let _ = self.child.status().await;
 
         self.killed = true;
 
@@ -612,6 +655,10 @@ impl RunningJob {
             String::from_utf8_lossy(&buf).to_string()
         }
     }
+
+    pub fn is_alive(&mut self) -> bool {
+        self.child.try_status().unwrap().is_none()
+    }
 }
 
 //Ensure that the child process is killed when the RunningJob is dropped
@@ -643,7 +690,7 @@ impl IsolateSandbox {
         };
 
         sandbox.cleanup().await;
-        sandbox.initialize().await;
+        //sandbox.initialize().await;
 
         sandbox
     }
@@ -675,8 +722,8 @@ impl IsolateSandbox {
         command.arg("--box-id");
         command.arg(self.box_id.to_string());
 
-        //panic_on_fail(&mut command).await;
-        command.output().await;
+        panic_on_fail(&mut command).await;
+        //command.output().await;
     }
 
     pub fn launch(

@@ -1,0 +1,22 @@
+type BigStruct = struct {
+    a: u8, b: u16, c: u32, d: u64,
+    e: i8, f: i16, g: i32, h: i64,
+    i: f32, j: f64,
+    k: bool,
+    l: str
+};
+
+function get_a = (s: BigStruct) -> u8;
+function get_b = (s: BigStruct) -> u16;
+function get_c = (s: BigStruct) -> u32;
+function get_d = (s: BigStruct) -> u64;
+function get_e = (s: BigStruct) -> i8;
+function get_f = (s: BigStruct) -> i16;
+function get_g = (s: BigStruct) -> i32;
+function get_h = (s: BigStruct) -> i64;
+function get_i = (s: BigStruct) -> f32;
+function get_j = (s: BigStruct) -> f64;
+function get_k = (s: BigStruct) -> bool;
+function get_l = (s: BigStruct) -> str;
+
+function list_test = (x: [BigStruct]) -> [BigStruct];
