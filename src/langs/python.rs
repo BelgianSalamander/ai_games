@@ -443,6 +443,7 @@ impl Language for Python {
             "/usr/bin/python3".to_string(),
             vec!["/prog/run/interactor.py".to_string()], 
             &LaunchOptions::new()
+                .memory_limit_kb(51200)
                 .map_dir("/prog", self.get_dir(game_interface))
                 .map_dir("/game", data_dir)
                 .set_env("PYTHONPATH", "/game")

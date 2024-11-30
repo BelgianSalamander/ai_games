@@ -834,6 +834,7 @@ int main(){
             format!("{data_dir}/agent.o"), 
             vec![], 
             &LaunchOptions::new()
+                .memory_limit_kb(51200)
                 .map_full(data_dir)
         )
     }
