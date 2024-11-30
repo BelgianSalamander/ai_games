@@ -90,10 +90,7 @@ impl GameReporter {
             }
         };
 
-        let val = json!({
-            "kind": kind,
-            "data": val
-        });
+        let val = json!([kind, val]);
 
         self.callbacks.lock().await.update_game(self.id, &val).await;
     }

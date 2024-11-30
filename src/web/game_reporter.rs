@@ -84,7 +84,7 @@ impl Spectator {
     }
 
     pub async fn update_game(&mut self, data: &Value) -> Result<(), std::io::Error> {
-        self.send_packet("update", data).await
+        self.send_packet("upd", data).await
     }
 }
 

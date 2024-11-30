@@ -197,6 +197,7 @@ class NZOISnake {
 
         this.colours = [];
         this.scoreElements = [];
+        this.scores = [];
 
         for (const player of players) {
             let colour = getColour(player);
@@ -223,6 +224,7 @@ class NZOISnake {
             let scoreElement = document.createElement("span");
             scoreElement.classList.add("snake-score");
             scoreElement.innerText = "0";
+            this.scores.push(0);
 
             this.scoreElements.push(scoreElement);
             playerList.appendChild(scoreElement);
@@ -243,9 +245,11 @@ class NZOISnake {
     }
 
     updateGame(element, data) {
-        if (data.kind == "dimensions") {
-            this.rows = data.data[0];
-            this.cols = data.data[1];
+        let packetKind = data[0];
+        let packetData = data[1];
+        if (packetKind == "dimensions") {
+            this.rows = packetData[0];
+            this.cols = packetData[1];
 
             console.log(`Grid is ${this.rows} by ${this.cols}`);
 
@@ -271,13 +275,12 @@ class NZOISnake {
                     gridContainer.appendChild(cell);
                 }
             }
-        } else if (data.kind == "grid") {
-            console.log("Updating grid");
+        } else if (packetKind == "grid") {
             for (let r = 0; r < this.rows; r++) {
                 for (let c = 0; c < this.cols; c++) {
                     const cell = document.getElementById("snake-cell-" + r + "-" + c);
 
-                    let val = data.data[r][c];
+                    let val = packetData[r][c];
 
                     if (val == -1) cell.style.backgroundColor = SNAKE_FOOD;
                     else if (val == 0) cell.style.backgroundColor = SNAKE_EMPTY;
@@ -287,15 +290,35 @@ class NZOISnake {
                     }
                 }
             }
-        } else if (data.kind == "scores") {
+        } else if (packetKind == "upd") {
+            for (let arr of packetData) {
+                const newVal = arr[0];
+
+                for (let i = 1; i < arr.length; i += 2) {
+                    const row = arr[i];
+                    const col = arr[i+1];
+
+                    const cell = document.getElementById("snake-cell-" + row + "-" + col);
+
+                    let colour;
+                    if (newVal == -1) colour = SNAKE_FOOD;
+                    else if (newVal == 0) colour = SNAKE_EMPTY;
+                    else colour = this.colours[newVal - 1];
+
+                    cell.style.backgroundColor = colour;
+                }
+            }
+        } else if (packetKind == "scr") {
             for (let i = 0; i < this.scoreElements.length; i++) {
-                this.scoreElements[i].innerText = `${data.data[i]}`;
+                //this.scoreElements[i].innerText = `${packetData[i]}`;
+                this.scores[i] += packetData[i];
+                this.scoreElements[i].innerText = `${this.scores[i]}`
             }
         }
     }
 
     shouldWaitForUpdate(data) {
-        return data.kind == "grid";
+        return data[0] == "grid" || data[0] == "upd";
     }
 
     endGame(element) {
@@ -308,7 +331,7 @@ const GAME_MAP = {
     "Snake": new NZOISnake()
 };
 
-const MIN_DELAY = 100;
+let MIN_DELAY = 20;
 const eventQueue = [];
 let lastUpdate = new Date();
 let queueCallback = -1;
@@ -324,7 +347,7 @@ function processQueue() {
     let currentTime = new Date();
 
     let mustWait = true;
-    if (eventQueue[0].kind == "update") {
+    if (eventQueue[0].kind == "upd") {
         mustWait = gameEngine.shouldWaitForUpdate(eventQueue[0].data);
     }
     if (!mustWait || currentTime - lastUpdate >= MIN_DELAY) {
@@ -334,7 +357,7 @@ function processQueue() {
         eventQueue.splice(0, 1);
 
         console.log("Processing packet", packet);
-        if (packet.kind == "update") {
+        if (packet.kind == "upd") {
             gameEngine.updateGame(e, packet.data);
         } else if (packet.kind == "end") {
             gameEngine.endGame(e, packet.data);
@@ -460,7 +483,7 @@ function connect() {
 
             for (p of json.data.history) {
                 eventQueue.push({
-                    "kind": "update",
+                    "kind": "upd",
                     "data": JSON.parse(p)
                 });
             }

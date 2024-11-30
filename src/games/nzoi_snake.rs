@@ -1,4 +1,4 @@
-use std::{time::Duration, collections::VecDeque};
+use std::{collections::{HashMap, HashSet, VecDeque}, time::Duration};
 
 use async_trait::async_trait;
 use log::warn;
@@ -96,6 +96,8 @@ impl Game for NzoiSnake {
             }
         }
 
+        reporter.update(&grid, "grid").await;
+
         while num_dead < self.num_players() {
             if num_dead >= self.num_players() - 1 {
                 turns_since_dead += 1;
@@ -103,6 +105,9 @@ impl Game for NzoiSnake {
                     break;
                 }
             }
+
+            let prev_scores = scores.clone();
+            let prev_grid = grid.clone();
 
             let mut num_food_on_board = 0;
 
@@ -232,7 +237,6 @@ impl Game for NzoiSnake {
                     } else {
                         grid[p.row as usize][p.col as usize] = 0;
                     }
-                    
                 }
 
                 for i in 0..self.num_players() {
@@ -242,8 +246,44 @@ impl Game for NzoiSnake {
                 }
             }
 
-            reporter.update(&grid, "grid").await;
-            reporter.update(&scores, "scores").await;
+            // reporter.update(&grid, "grid").await;
+            // reporter.update(&scores, "scores").await;
+
+            let mut changes: HashMap<i32, Vec<(usize, usize)>> = HashMap::new();
+
+            for i in 0..self.rows() {
+                for j in 0..self.cols() {
+                    if prev_grid[i][j] != grid[i][j] {
+                        let new_val = grid[i][j];
+
+                        if !changes.contains_key(&new_val) {
+                            changes.insert(new_val, vec![]);
+                        }
+
+                        changes.get_mut(&new_val).unwrap().push((i, j));
+                    }
+                }
+            }
+
+            let mut update_data = vec![];
+
+            for (val, positions) in changes {
+                let mut sub = vec![val];
+
+                for (i, j) in positions {
+                    sub.push(i as i32);
+                    sub.push(j as i32);
+                }
+
+                update_data.push(sub);
+            }
+
+            reporter.update(&update_data, "upd").await;
+
+            let score_changes: Vec<_> = scores.iter().zip(prev_scores).map(|(a, b)| a - b).collect();
+            if score_changes.iter().any(|&x: &f32| x.abs() > 0.0001) {
+                reporter.update(&score_changes, "scr").await;
+            }
 
             turns_without_changes += 1;
 
